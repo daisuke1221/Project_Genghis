@@ -58,7 +58,8 @@ class App {
     this.world.setState(this.preview);
     this.world.setSelected(null);
     this.world.autoRotate = true;
-    const hasAuto = !!localStorage.getItem(`${SAVE_PREFIX}auto`);
+    let hasAuto = false;
+    try { hasAuto = !!localStorage.getItem(`${SAVE_PREFIX}auto`); } catch { hasAuto = false; }
     $('#screen').innerHTML = `
       <div class="title-screen">
         <div class="title-logo">草原の覇者</div>
@@ -530,6 +531,7 @@ class App {
     const r = startBuild(st, pid, t[0], t[1], type);
     if (!r.ok) { toast(r.reason); audio.sfx('error'); return false; }
     audio.sfx('build');
+    tooltip(null);
     this.city.floatText(t, `-${r.cost}金`);
     this.city.rebuild();
     this.renderTopbar();

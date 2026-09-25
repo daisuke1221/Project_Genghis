@@ -171,7 +171,9 @@ export function reachable(b, u) {
     for (const [c, r] of hexNeighbors(cur.c, cur.r)) {
       const x = unitAt(b, c, r);
       if (x && x.side !== u.side) continue;
-      const cost = cur.cost + moveCost(b, u, c, r);
+      let cost = cur.cost + moveCost(b, u, c, r);
+      // 城郭へは、隣接マスからなら移動力をすべて使って必ず踏み込める
+      if (cost > mp && cur.cost === 0 && u.side === 'att' && isCastle(tileOf(b, c, r).t)) cost = mp;
       if (cost > mp) continue;
       const k = hkey(c, r);
       const prevBest = res.get(k);

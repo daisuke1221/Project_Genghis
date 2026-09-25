@@ -59,12 +59,20 @@ const SONGS = {
   },
 };
 
+function store(key, value) {
+  try {
+    if (value === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, String(value));
+  } catch { /* ストレージが使えない環境 */ }
+  return null;
+}
+
 class AudioSystem {
   constructor() {
     this.ctx = null;
     this.current = null;
-    this.musicVol = Number(localStorage.getItem('vol.music') ?? 0.5);
-    this.sfxVol = Number(localStorage.getItem('vol.sfx') ?? 0.7);
+    this.musicVol = Number(store('vol.music') ?? 0.5);
+    this.sfxVol = Number(store('vol.sfx') ?? 0.7);
   }
 
   init() {
@@ -102,8 +110,8 @@ class AudioSystem {
 
   setVolumes(music, sfx) {
     this.musicVol = music; this.sfxVol = sfx;
-    localStorage.setItem('vol.music', music);
-    localStorage.setItem('vol.sfx', sfx);
+    store('vol.music', music);
+    store('vol.sfx', sfx);
     if (this.ctx) {
       this.musicBus.gain.setTargetAtTime(music * 0.5, this.ctx.currentTime, 0.05);
       this.sfxBus.gain.setTargetAtTime(sfx * 0.6, this.ctx.currentTime, 0.05);

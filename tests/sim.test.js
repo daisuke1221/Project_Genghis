@@ -156,3 +156,20 @@ describe('long simulation', () => {
     expect(alive).toBeGreaterThan(1);
   }, 60000);
 });
+
+describe('castle assault', () => {
+  it('infantry can step into stone-walled castle hexes from an adjacent hex', async () => {
+    const { createBattle, reachable, hexNeighbors, hkey } = await import('../src/game/battle.js');
+    const st = newGame({ seed: 21 });
+    st.provinces.tat.city.walls = 3;
+    const gens = generalsIn(st, 'kiy', 'kiyat');
+    gens[0].unit.type = 'inf';
+    const b = createBattle(st, { attNation: 'kiyat', attIds: [gens[0].id], provinceId: 'tat', fromProvince: 'kiy' });
+    const u = b.units.find((x) => x.side === 'att');
+    b.units = b.units.filter((x) => x === u); // 守備兵を除く
+    const castle = hexNeighbors(...b.keep).find(([c, r]) => b.tiles[hkey(c, r)].t === 'castle');
+    const outside = hexNeighbors(...castle).find(([c, r]) => b.tiles[hkey(c, r)].t !== 'castle' && b.tiles[hkey(c, r)].t !== 'keep');
+    [u.c, u.r] = outside;
+    expect(reachable(b, u).has(hkey(...castle))).toBe(true);
+  });
+});

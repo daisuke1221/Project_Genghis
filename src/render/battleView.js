@@ -11,6 +11,7 @@ import { PROV_DEF } from '../game/state.js';
 import { bindPointer, pickAt, tween, tweenFn, wait, easeOut } from './engine.js';
 import * as M from './models.js';
 import { audio } from '../audio/audio.js';
+import { confirmBox } from '../ui/ui.js';
 
 const R = 1;
 const SQ3 = Math.sqrt(3);
@@ -203,7 +204,7 @@ export class BattleView {
     $('#bt-auto').onclick = () => { this.auto = !this.auto; $('#bt-auto').classList.toggle('active', this.auto); this.maybeAuto(); };
     $('#bt-retreat').onclick = async () => {
       if (this.busy) return;
-      if (!confirm('退却しますか？（この合戦は敗北となります）')) return;
+      if (!(await confirmBox('退却', '退却しますか？（この合戦は敗北となります）'))) return;
       retreat(this.b, this.playerSide);
       this.finish();
     };
