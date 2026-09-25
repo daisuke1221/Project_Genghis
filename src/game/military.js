@@ -7,6 +7,8 @@ import {
   canAttack, isActive, randomGeneral, addGeneral,
 } from './state.js';
 import { cityYields } from './city.js';
+import { transferCityTechs } from './tech.js';
+import { orphanNation } from './royal.js';
 
 // ---- 徴兵 ----
 export function recruitLimit(st, pid) {
@@ -21,7 +23,7 @@ export function recruitQuote(st, gid, type, want) {
   const T = UNIT_TYPES[type];
   if (g.unit && g.unit.soldiers > 0 && g.unit.type !== type) return { ok: false, reason: '兵がいる間は兵種を変えられません', amount: 0 };
   const y = cityYields(st, g.province);
-  if (T.needs === 'workshop' && !y.hasWorkshop) return { ok: false, reason: '工房が必要です', amount: 0 };
+  if (T.needs === 'workshop' && !y.canSiege) return { ok: false, reason: '工房か攻城技師が必要です', amount: 0 };
   const nat = st.nations[g.nation];
   const cur = g.unit?.soldiers ?? 0;
   let amount = Math.min(
@@ -52,7 +54,7 @@ export function recruit(st, gid, type, want) {
   const nat = st.nations[g.nation];
   const y = cityYields(st, g.province);
   const culture = CULTURES[NATION_DEF[g.nation].culture];
-  const base = Math.min(90, 25 + y.trainNew + (culture.nomad && UNIT_TYPES[type].horses ? 20 : 0));
+  const base = Math.min(95, 25 + y.trainNew + (culture.nomad && UNIT_TYPES[type].horses ? 20 : 0) + (type === 'siege' ? y.tech.siegeTrain : 0));
   const cur = g.unit?.soldiers ?? 0;
   const curTr = g.unit?.training ?? base;
   g.unit = { type, soldiers: cur + q.amount, training: Math.round((curTr * cur + base * q.amount) / (cur + q.amount)) };
@@ -137,6 +139,7 @@ function escapeTarget(st, g, from) {
 export function changeOwner(st, pid, nid) {
   const p = st.provinces[pid];
   p.owner = nid;
+  transferCityTechs(st, pid, nid);
   p.delegated = nid !== st.playerNation;
   p.city.loyalty = Math.min(p.city.loyalty, 35);
   p.city.pop = Math.round(p.city.pop * 0.92);
@@ -267,7 +270,8 @@ export function destroyNation(st, nid, byNid) {
   for (const g of Object.values(st.generals)) {
     if (g.nation === nid) { g.nation = null; g.unit = null; }
   }
-  for (const p of Object.values(st.provinces)) if (p.owner === nid) { p.owner = null; p.governorId = null; }
+  for (const p of Object.values(st.provinces)) if (p.owner === nid) { p.owner = null; p.governorId = null; transferCityTechs(st, p.id, null); }
+  orphanNation(st, nid);
   for (const other of Object.values(st.nations)) { delete other.treaties[nid]; }
   log(st, `${nat.name}は滅亡した。${byNid ? `（${st.nations[byNid].name}による）` : ''}`, true);
 }

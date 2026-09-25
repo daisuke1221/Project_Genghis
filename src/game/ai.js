@@ -10,6 +10,9 @@ import { aiDevelopCity, cityYields, startWalls } from './city.js';
 import { recruit, recruitQuote, tryHire, adjustRelation, searchTalent, recruitLimit } from './military.js';
 import { aiDiplomacy, sign } from './diplomacy.js';
 import { executeMove } from './actions.js';
+import { aiHireTech } from './tech.js';
+import { aiTrade } from './trade.js';
+import { becomeConsort } from './royal.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -18,7 +21,14 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   // 外交
   for (const pr of aiDiplomacy(st, nid)) {
     const ok = hooks.proposal ? await hooks.proposal(pr) : false;
-    if (ok) sign(st, pr.from, st.playerNation, pr.kind);
+    if (ok && pr.kind === 'marriage') {
+      const p = st.princesses[pr.princess];
+      if (p && !p.married) {
+        becomeConsort(st, p, st.nations[st.playerNation].rulerId);
+        sign(st, pr.from, st.playerNation, 'alliance');
+        adjustRelation(st, pr.from, st.playerNation, 30);
+      }
+    } else if (ok) sign(st, pr.from, st.playerNation, pr.kind);
     else adjustRelation(st, pr.from, st.playerNation, -5);
   }
 
@@ -46,6 +56,11 @@ export async function aiNationTurn(st, nid, hooks = {}) {
       startWalls(st, p.id);
     }
   }
+
+  // 技術者・交易
+  const pids = provs.map((p) => p.id);
+  aiHireTech(st, nid, pids);
+  if (chance(st, 0.2)) aiTrade(st, nid, pids);
 
   // 徴兵
   aiRecruit(st, nid, reserve);

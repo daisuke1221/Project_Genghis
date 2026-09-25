@@ -5,6 +5,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { PROVINCES, PROVINCE_TERRAIN, CULTURES } from '../game/data.js';
 import { MAP_W, MAP_H, GRID_W, GRID_H, RES, cells, heightAt, PROV_POS, provinceAt, cellXZ, fbm } from '../game/geo.js';
 import { NATION_DEF, generalsIn } from '../game/state.js';
+import { path as tradePath } from '../game/trade.js';
 import { bindPointer, pickAt, tweenFn } from './engine.js';
 import * as M from './models.js';
 
@@ -264,6 +265,40 @@ export class WorldView {
     return { group, label: el };
   }
 
+  // 交易路：金色の点線と、行き来する隊商
+  setRoutes(routes) {
+    const key = routes.map((r) => `${r.from}-${r.to}`).join('|');
+    if (key === this.routeKey) return;
+    this.routeKey = key;
+    if (this.routeGroup) M.disposeGroup(this.routeGroup);
+    this.routeGroup = new THREE.Group();
+    this.scene.add(this.routeGroup);
+    this.caravans = [];
+    for (const r of routes) {
+      const pids = tradePath(r.from, r.to);
+      if (!pids) continue;
+      const pts = [];
+      for (let i = 0; i < pids.length; i++) {
+        const a = PROV_POS[pids[i]];
+        pts.push(new THREE.Vector3(a.x, Math.max(0.1, heightAt(a.x, a.z)) + 0.5, a.z));
+        if (i < pids.length - 1) {
+          const b = PROV_POS[pids[i + 1]];
+          const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+          pts.push(new THREE.Vector3(mx, Math.max(0.1, heightAt(mx, mz)) + 0.9, mz));
+        }
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(pts.length * 12));
+      const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0xffd35a, dashSize: 0.6, gapSize: 0.35 }));
+      line.computeLineDistances();
+      this.routeGroup.add(line);
+      const cam = M.camel();
+      cam.scale.setScalar(2.2);
+      this.routeGroup.add(cam);
+      this.caravans.push({ obj: cam, curve, t: Math.random(), speed: 0.06 / Math.max(1, pids.length - 1) });
+    }
+  }
+
   setSelected(pid) {
     this.selected = pid;
     if (pid) {
@@ -330,6 +365,14 @@ export class WorldView {
       const tg = this.controls.target;
       tg.x = Math.max(-MAP_W / 2, Math.min(MAP_W / 2, tg.x));
       tg.z = Math.max(-MAP_H / 2, Math.min(MAP_H / 2, tg.z));
+    }
+    for (const c of this.caravans || []) {
+      c.t = (c.t + dt * c.speed) % 2;
+      const k = c.t < 1 ? c.t : 2 - c.t; // 往復
+      const p = c.curve.getPointAt(k);
+      const ahead = c.curve.getPointAt(Math.min(1, Math.max(0, k + (c.t < 1 ? 0.01 : -0.01))));
+      c.obj.position.set(p.x, p.y - 0.45, p.z);
+      c.obj.lookAt(ahead.x, p.y - 0.45, ahead.z);
     }
     this.ring.rotation.z += dt * 0.8;
     this.ring.scale.setScalar(1 + Math.sin(t * 4) * 0.06);

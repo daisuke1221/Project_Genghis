@@ -3,14 +3,18 @@ import { NATIONS, PROVINCES, NAMED_GENERALS, CULTURES, NAME_POOLS, START_YEAR, S
 import { rnd, rint, pick, chance } from './rng.js';
 import { NEIGHBORS } from './geo.js';
 import { createCity, aiDevelopCity, cityYields, bestTile, startBuild } from './city.js';
+import { initRoyals, setRoyalHooks } from './royal.js';
+import { initTechs, setTechNamer } from './tech.js';
+import { initMarket } from './trade.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
 
 export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7fffffff) } = {}) {
   const st = {
-    version: 1,
+    version: SAVE_VERSION,
     rng: seed >>> 0,
+    nextId: 1,
     seed,
     year: START_YEAR,
     season: 0,
@@ -120,6 +124,9 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
       h.b.level += 1;
     }
   }
+  initRoyals(st);
+  initTechs(st);
+  initMarket(st);
   log(st, `${START_YEAR}年春、ユーラシアの覇権をめぐる戦いが始まった。`, true);
   return st;
 }
@@ -222,8 +229,20 @@ export function canAttack(st, a, b) {
 
 // ---- セーブ / ロード ----
 export function serialize(st) { return JSON.stringify(st); }
+export const SAVE_VERSION = 2;
 export function deserialize(s) {
   const st = JSON.parse(s);
-  if (!st || st.version !== 1) throw new Error('対応していないセーブデータです');
+  if (!st || !st.version || st.version > SAVE_VERSION) throw new Error('対応していないセーブデータです');
+  if (st.version < 2) {
+    // v1 → v2：後宮・技術者・交易を追加
+    st.nextId = st.nextId || 1;
+    initRoyals(st);
+    initTechs(st);
+    initMarket(st);
+    st.version = 2;
+  }
   return st;
 }
+
+setRoyalHooks({ addGeneral, randomName, log });
+setTechNamer((st, culture) => randomName(st, culture));

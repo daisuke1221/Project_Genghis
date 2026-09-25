@@ -345,3 +345,59 @@ export const UNIT_TYPES = {
 export const UNIT_ORDER = ['cav', 'harch', 'inf', 'arch', 'siege'];
 
 export const SEASON_FARM = [0.6, 1.0, 2.0, 0.4];
+
+// ---- 技術者 ----
+export const TECH_TYPES = {
+  farmer:    { name: '農業技師', glyph: '農', desc: '農地の食糧 +15%/Lv', cultures: ['chinese', 'korean', 'indian', 'islamic', 'european', 'slavic'] },
+  herder:    { name: '牧夫', glyph: '牧', desc: '牧場の馬 +25%/Lv', cultures: ['mongol', 'turkic', 'tibetan'] },
+  merchant:  { name: '商人', glyph: '商', desc: '市場・隊商宿の金 +15%/Lv、交易利益 +15%/Lv、特産品の生産 +20%/Lv', cultures: ['islamic', 'indian', 'chinese', 'greek', 'european', 'turkic'] },
+  artisan:   { name: '工匠', glyph: '工', desc: '工房の金 +25%/Lv、新兵の訓練度 +4/Lv', cultures: ['chinese', 'japanese', 'korean', 'islamic', 'european'] },
+  architect: { name: '建築家', glyph: '築', desc: '建設速度 +20%/Lv', cultures: ['islamic', 'greek', 'european', 'chinese', 'georgian'] },
+  engineer:  { name: '攻城技師', glyph: '砲', desc: '工房がなくても攻城兵を徴兵でき、攻城兵の訓練度 +10/Lv', cultures: ['chinese', 'islamic', 'european'] },
+  scholar:   { name: '学者', glyph: '学', desc: '民忠 +3/Lv、税収 +6%/Lv', cultures: ['chinese', 'islamic', 'tibetan', 'indian', 'greek', 'korean'] },
+  smith:     { name: '鍛冶師', glyph: '鍛', desc: '新兵の訓練度 +6/Lv、駐屯兵の訓練 +2/Lv', cultures: ['mongol', 'turkic', 'japanese', 'european', 'georgian', 'slavic'] },
+};
+export const TECH_HIRE_COST = 150; // ×Lv
+export const TECH_SALARY = 12; // ×Lv／季
+export const TECH_SLOTS = 2; // 1都市あたり
+
+// ---- 後宮 ----
+export const FEMALE_NAMES = {
+  mongol: ['クラン', 'イェスイ', 'イェスゲン', 'チャブイ', 'オルクナ', 'トレゲネ', 'ドクズ', 'ケレン', 'サルジ', 'アルタニ', 'エジェイ', 'ボルガン'],
+  turkic: ['アイ・ハトゥン', 'ギュル', 'チチェク', 'アルトゥン', 'ヤシル', 'ユルドゥズ', 'カラ・ハトゥン', 'ボズ・ハトゥン'],
+  chinese: { family: ['王', '李', '張', '劉', '陳', '楊', '趙', '周', '徐', '孫', '完顔', '蒲察'], title: '氏', princess: [['永', '安', '寿', '福', '和', '長', '慶', '宣'], ['寧', '康', '平', '徳', '楽', '華'], '公主'] },
+  korean: { family: ['金', '李', '朴', '崔', '鄭', '柳', '王'], title: '氏', princess: [['延', '寿', '昌', '慶', '安'], ['和', '寧', '福', '徳'], '宮主'] },
+  japanese: { given: ['藤', '朝', '時', '信', '光', '景', '重', '輝', '清', '寿', '千', '万'], wife: '子', princess: '姫' },
+  tibetan: ['ドルマ', 'ペマ', 'ヤンチェン', 'デキ', 'ラモ', 'チョデン'],
+  islamic: ['ファーティマ', 'アーイシャ', 'ザイナブ', 'マルヤム', 'ハディージャ', 'ルカイヤ', 'シャジャル', 'ダイファ', 'サフィーヤ', 'ハリーマ'],
+  indian: ['サンヨーギター', 'パドマーヴァティー', 'ラクシュミー', 'カマラー', 'ルクミニー', 'シーター', 'ラーダー'],
+  european: ['イザベル', 'エレノア', 'マティルダ', 'ベアトリス', 'アリックス', 'ブランシュ', 'ジャンヌ', 'コンスタンツェ', 'アグネス', 'ヨランド'],
+  slavic: ['オリガ', 'アンナ', 'マリヤ', 'エフロシニヤ', 'ヴェルフスラヴァ', 'ソフィヤ', 'ヤロスラヴナ'],
+  greek: ['エイレーネー', 'テオドラ', 'アンナ', 'ゾエー', 'マリア', 'エウドキア'],
+  georgian: ['ルスダン', 'テオドラ', 'ケテヴァン', 'ナテラ', 'タマル'],
+};
+// 妃: 名前, 勢力, 生年, 魅力, 政治
+export const NAMED_CONSORTS = [
+  ['ボルテ', 'kiyat', 1161, 88, 82],
+  ['グルベス', 'naiman', 1165, 90, 70],
+  ['北条政子', 'kamakura', 1157, 82, 95],
+];
+// 姫: 名前, 勢力, 生年, 魅力, 政治（父は君主。ただし fatherName があればその武将）
+export const NAMED_PRINCESSES = [
+  ['コアジン', 'kiyat', 1178, 70, 60],
+  ['チチェゲン', 'kiyat', 1183, 72, 55],
+  ['アラカイ', 'kiyat', 1189, 75, 85],
+  ['ソルカクタニ', 'kereit', 1189, 90, 95, 'ジャカ・ガンボ'],
+  ['イバカ', 'kereit', 1175, 78, 60, 'ジャカ・ガンボ'],
+  ['大姫', 'kamakura', 1178, 70, 50],
+  ['三幡', 'kamakura', 1186, 72, 55],
+  ['ルスダン', 'georgia', 1189, 80, 60],
+];
+export const FEMALE_GENERALS = ['タマル', 'テルケン・ハトゥン'];
+
+// ---- 交易 ----
+export const GOODS = {};
+for (const p of PROVINCES) {
+  if (!GOODS[p.specialty]) GOODS[p.specialty] = { name: p.specialty, base: Math.round(p.specValue / 8), sources: [] };
+  GOODS[p.specialty].sources.push(p.id);
+}

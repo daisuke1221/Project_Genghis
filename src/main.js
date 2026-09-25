@@ -7,6 +7,10 @@ import { BUILDING_COLORS, BUILDING_GLYPH } from './render/models.js';
 import { audio } from './audio/audio.js';
 import { $, esc, fmt, modal, toast, busy, tooltip, statBar, confirmBox } from './ui/ui.js';
 import * as D from './ui/dialogs.js';
+import * as X from './ui/extraDialogs.js';
+import { techsIn } from './game/tech.js';
+import { routesFrom } from './game/trade.js';
+import { TECH_TYPES } from './game/data.js';
 import {
   newGame, PROV_DEF, NATION_DEF, dateStr, nationProvinces, nationGenerals, generalsIn, nationSoldiers, ruler,
   serialize, deserialize, treaty,
@@ -176,6 +180,7 @@ class App {
       $('#leftpanel').classList.add('hidden');
       this.renderSide();
       this.world.refresh();
+      this.world.setRoutes(this.st.routes.filter((r) => r.nation === this.st.playerNation));
     } else if (this.mode === 'city') {
       this.renderCityPanels();
     }
@@ -197,6 +202,7 @@ class App {
       <span class="spacer"></span>
       <span class="btns">
         ${this.mode === 'city' ? '<button class="btn" data-a="back">地図へ戻る</button>' : ''}
+        <button class="btn" data-a="harem">後宮</button>
         <button class="btn" data-a="diplo">外交</button>
         <button class="btn" data-a="nations">勢力</button>
         <button class="btn" data-a="save">記録</button>
@@ -211,6 +217,7 @@ class App {
       if (a === 'end') this.endTurn();
       if (a === 'back') this.leaveCity();
       if (a === 'diplo') { await D.diplomacyDialog(this); this.refresh(); }
+      if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
       if (a === 'settings') D.settingsDialog(this);
@@ -262,9 +269,15 @@ class App {
         <button class="btn" data-a="recruit">徴兵</button>
         <button class="btn" data-a="sortie">出陣・移動</button>
         <button class="btn" data-a="personnel">人事</button>
-        <button class="btn" data-a="trade">交易</button>
-        <button class="btn ${p.delegated ? 'active' : ''}" data-a="delegate">委任：${p.delegated ? 'ON' : 'OFF'}</button>
+        <button class="btn" data-a="trade">交易・隊商</button>
+        <button class="btn" data-a="tech">技術者</button>
+        <button class="btn ${p.delegated ? 'active' : ''}" data-a="delegate" style="grid-column:span 2">委任：${p.delegated ? 'ON' : 'OFF'}</button>
       </div>`;
+      const techs = techsIn(st, pid);
+      const routes = routesFrom(st, pid);
+      html += `<div class="sect" style="font-size:13px"><b>技術者</b>：${techs.length ? techs.map((t) => `${esc(t.name)}（${TECH_TYPES[t.type].name}${'★'.repeat(t.level)}）`).join('、') : '<span class="muted">なし</span>'}<br>
+        <b>交易路</b>：${routes.length ? routes.map((r) => `→${PROV_DEF[r.to].city}${r.last ? (r.last.raided ? '<span class="neg">(略奪)</span>' : `<span class="pos">(+${fmt(r.last.profit)})</span>`) : ''}`).join('、') : '<span class="muted">なし</span>'}
+        <span class="muted">／特産 ${def.specialty} 在庫${fmt(c.goods?.[def.specialty] ?? 0)}荷</span></div>`;
     } else {
       html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}</div>`;
     }
@@ -286,7 +299,8 @@ class App {
       if (a === 'recruit') { await D.recruitDialog(this, pid); this.refresh(); }
       if (a === 'sortie') this.startSortie(pid);
       if (a === 'personnel') { await D.personnelDialog(this, pid); this.refresh(); }
-      if (a === 'trade') { await D.tradeDialog(this, pid); this.refresh(); }
+      if (a === 'trade') { await X.tradeDialog(this, pid); this.refresh(); }
+      if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
       if (a === 'diplo') { await D.diplomacyDialog(this, p.owner); this.refresh(); }
     };
@@ -511,10 +525,15 @@ class App {
       }
       html += '</div>';
     }
+    const techs = techsIn(st, pid);
+    html += `<div class="sect"><b>技術者</b> ${techs.length ? techs.map((t) => `<div class="gen-row"><span>${esc(t.name)}</span><span class="muted">${TECH_TYPES[t.type].name}${'★'.repeat(t.level)}</span></div>`).join('') : '<span class="muted">なし</span>'}
+      ${own ? '<button class="btn small" data-a="tech" style="margin-top:4px">技術者を招聘・配置</button> <button class="btn small" data-a="trade" style="margin-top:4px">交易・隊商</button>' : ''}</div>`;
     html += `<div class="sect muted">隣接ボーナス：農地は川沿いで+50%／市場は隣の住居1つにつき+15%／住居は寺院の隣で+25%／工房は鉱山の隣で+50%。</div>`;
     side.innerHTML = html;
     side.onclick = (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a;
+      if (a === 'tech') { X.techDialog(this, pid).then(() => { this.city.rebuild(); this.renderCityPanels(); this.renderTopbar(); }); return; }
+      if (a === 'trade') { X.tradeDialog(this, pid).then(() => { this.renderCityPanels(); this.renderTopbar(); }); return; }
       if (!a || !sel) return;
       const t = tileAt(p.city, ...sel);
       if (a === 'upgrade') this.tryBuild(sel, t.b.type);

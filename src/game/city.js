@@ -1,6 +1,8 @@
 // 箱庭内政：都市グリッド、建設、産出計算、AIの都市開発
 import { PROVINCE_TERRAIN, BUILDINGS, WALLS, SEASON_FARM, CLEAR_FOREST_COST, PROVINCES } from './data.js';
 import { rnd, rint, chance, pick } from './rng.js';
+import { techBonus } from './tech.js';
+import { importLoyalty } from './trade.js';
 
 export const GRID = 9;
 export const CENTER = 4;
@@ -81,7 +83,7 @@ function adjCount(city, x, y, pred) {
 const isType = (type) => (t) => t.b && t.b.type === type && effLevel(t.b) > 0;
 
 // 建物1つの産出
-export function buildingOutput(city, def, x, y, season) {
+export function buildingOutput(city, def, x, y, season, tb = null) {
   const tile = tileAt(city, x, y);
   const b = tile?.b;
   const out = { food: 0, gold: 0, horses: 0, popCap: 0, loyalty: 0, recruit: 0, train: 0, speed: 0, trainNew: 0, bonus: [] };
@@ -96,12 +98,14 @@ export function buildingOutput(city, def, x, y, season) {
       let m = T.farm;
       if (adjCount(city, x, y, (t) => t.t === 'river')) { m *= 1.5; out.bonus.push('川沿い+50%'); }
       if (tile.t === 'sand') { m *= 0.5; out.bonus.push('砂地-50%'); }
+      if (tb?.farm) { m *= 1 + tb.farm; out.bonus.push(`農業技師+${Math.round(tb.farm * 100)}%`); }
       out.food = Math.round(200 * L * m * SEASON_FARM[season ?? 1]);
       break;
     }
     case 'pasture':
       out.food = 60 * L;
-      out.horses = Math.round(150 * L * T.horse);
+      out.horses = Math.round(150 * L * T.horse * (1 + (tb?.horse ?? 0)));
+      if (tb?.horse) out.bonus.push(`牧夫+${Math.round(tb.horse * 100)}%`);
       if (T.horse > 1.2) out.bonus.push('草原の牧場');
       break;
     case 'house': {
@@ -113,13 +117,15 @@ export function buildingOutput(city, def, x, y, season) {
     case 'market': {
       const h = Math.min(4, adjCount(city, x, y, isType('house')));
       if (h) out.bonus.push(`住居隣接+${h * 15}%`);
-      out.gold = Math.round(60 * L * (1 + 0.15 * h));
+      out.gold = Math.round(60 * L * (1 + 0.15 * h) * (1 + (tb?.market ?? 0)));
+      if (tb?.market) out.bonus.push(`商人+${Math.round(tb.market * 100)}%`);
       break;
     }
     case 'workshop': {
       let m = 1;
       if (adjCount(city, x, y, isType('mine'))) { m = 1.5; out.bonus.push('鉱山隣接+50%'); }
-      out.gold = Math.round(30 * L * m);
+      out.gold = Math.round(30 * L * m * (1 + (tb?.workshop ?? 0)));
+      if (tb?.workshop) out.bonus.push(`工匠+${Math.round(tb.workshop * 100)}%`);
       out.trainNew = 8 * L;
       break;
     }
@@ -132,7 +138,7 @@ export function buildingOutput(city, def, x, y, season) {
     case 'lumber':
       out.speed = 0.15 * L; break;
     case 'caravan':
-      out.gold = Math.round((30 + def.specValue) * L); break;
+      out.gold = Math.round((30 + def.specValue) * L * (1 + (tb?.market ?? 0))); break;
   }
   return out;
 }
@@ -143,9 +149,10 @@ export function cityYields(st, pid, season = st.season) {
   const def = PDEF[pid];
   const city = p.city;
   const gov = p.governorId ? st.generals[p.governorId] : null;
-  const tot = { food: 0, gold: 0, horses: 0, popCap: 0, loyalty: 0, recruit: 0, train: 3, speed: 1, trainNew: 0, hasWorkshop: false, counts: {} };
+  const tb = techBonus(st, pid);
+  const tot = { food: 0, gold: 0, horses: 0, popCap: 0, loyalty: 0, recruit: 0, train: 3, speed: 1, trainNew: 0, hasWorkshop: false, counts: {}, tech: tb };
   for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
-    const o = buildingOutput(city, def, x, y, season);
+    const o = buildingOutput(city, def, x, y, season, tb);
     for (const k of ['food', 'gold', 'horses', 'popCap', 'loyalty', 'recruit', 'train', 'speed', 'trainNew']) tot[k] += o[k];
     const b = tileAt(city, x, y).b;
     if (b && effLevel(b) > 0) {
@@ -154,11 +161,16 @@ export function cityYields(st, pid, season = st.season) {
     }
   }
   tot.recruit += Math.round(city.pop * 0.02 / 50) * 50;
+  tot.trainNew += tb.trainNew;
+  tot.train += tb.train;
+  tot.speed += tb.speed;
+  tot.loyalty += tb.loyalty + importLoyalty(city);
+  tot.canSiege = tot.hasWorkshop || tb.siege;
   const polMul = gov ? 0.8 + gov.pol / 250 : 0.75;
-  tot.tax = Math.round(city.pop * 0.012 * (0.5 + city.loyalty / 100));
+  tot.tax = Math.round(city.pop * 0.012 * (0.5 + city.loyalty / 100) * (1 + tb.tax));
   tot.gold = Math.round((tot.gold + tot.tax) * polMul);
   tot.speed += gov ? gov.pol / 100 : 0;
-  tot.speed = Math.min(tot.speed, 2.5);
+  tot.speed = Math.min(tot.speed, 3);
   tot.food = Math.round(tot.food * (gov ? 0.9 + gov.pol / 500 : 0.85));
   tot.foodUse = Math.round(city.pop * 0.01);
   tot.loyaltyTarget = Math.round(45 + tot.loyalty * 2 + (gov ? (gov.cha - 50) / 4 : -5));

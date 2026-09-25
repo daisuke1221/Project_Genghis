@@ -8,6 +8,9 @@ import {
 import { cityYields, tickConstruction } from './city.js';
 import { aiNationTurn, delegateDevelop } from './ai.js';
 import { killGeneral } from './military.js';
+import { tradeTick } from './trade.js';
+import { techTick } from './tech.js';
+import { royalTick } from './royal.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -29,6 +32,7 @@ export async function endTurn(st, hooks = {}) {
 export function seasonTick(st) {
   const player = st.playerNation;
   const income = {};
+  tradeTick(st, (t, imp) => log(st, t, imp));
   for (const p of Object.values(st.provinces)) {
     const c = p.city;
     if (!p.owner) {
@@ -78,6 +82,8 @@ export function seasonTick(st) {
     nat.lastIncome = income[nat.id] ?? { gold: 0, food: 0 };
     nat.food = Math.min(nat.food, 60000);
   }
+  techTick(st);
+  royalTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;
 }
 

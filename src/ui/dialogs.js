@@ -8,6 +8,7 @@ import {
 import { recruitQuote, recruit, dismiss, recruitLimit, hireChance, tryHire, reward, recruitChance, searchTalent, SEARCH_COST } from '../game/military.js';
 import { nationPower, gift, propose, breakTreaty, acceptChance } from '../game/diplomacy.js';
 import { cityYields } from '../game/city.js';
+import { portrait } from './portrait.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -138,38 +139,6 @@ export function personnelDialog(app, pid) {
           else toast('めぼしい人材は見つからなかった');
           render(); app.renderTopbar();
         }
-      };
-      render();
-    },
-  });
-}
-
-// ---------- 交易 ----------
-export function tradeDialog(app, pid) {
-  const st = app.st, nid = st.playerNation;
-  const y = cityYields(st, pid);
-  const markets = (y.counts.market || 0) + (y.counts.caravan || 0);
-  const rate = Math.min(1.5, 1 + markets * 0.05);
-  return modal({
-    title: `${PROV_DEF[pid].city}の市場`,
-    body: (el) => {
-      const render = () => {
-        const nat = st.nations[nid], c = st.provinces[pid].city;
-        const buyFood = Math.round(130 * rate), sellFood = Math.round(55 * rate), buyHorse = Math.round(100 * rate);
-        el.innerHTML = `<p>商人たちが集まっている。市場・隊商宿が多いほど良い条件で取引できる（現在 ×${rate.toFixed(2)}）。</p>
-          <div class="grid2"><span>金</span><span>${fmt(nat.gold)}</span><span>食糧</span><span>${fmt(nat.food)}</span><span>馬（この都市）</span><span>${fmt(c.horses)}</span></div>
-          <div class="row" style="margin-top:10px">
-            <button class="btn" data-t="bf" ${nat.gold >= 100 ? '' : 'disabled'}>100金で食糧${buyFood}を買う</button>
-            <button class="btn" data-t="sf" ${nat.food >= 200 ? '' : 'disabled'}>食糧200を${sellFood * 2}金で売る</button>
-            <button class="btn" data-t="bh" ${nat.gold >= 150 ? '' : 'disabled'}>150金で馬${buyHorse}頭を買う</button>
-          </div>`;
-        el.onclick = (e) => {
-          const t = e.target.dataset.t;
-          if (t === 'bf') { nat.gold -= 100; nat.food += buyFood; }
-          if (t === 'sf') { nat.food -= 200; nat.gold += sellFood * 2; }
-          if (t === 'bh') { nat.gold -= 150; c.horses += buyHorse; }
-          if (t) { audio.sfx('coin'); render(); app.renderTopbar(); }
-        };
       };
       render();
     },
@@ -338,6 +307,14 @@ export function helpDialog() {
       <ul><li>徴兵：武将ごとに兵を集めます（兵数の上限は統率×30）。騎兵・弓騎兵には馬が必要です（牧場で生産）。</li>
       <li>出陣・移動：武将を選んで隣の地方へ。敵地なら合戦になります。守備兵のいない地方はそのまま占領できます。</li>
       <li>合戦はヘックスの戦場で行います。騎兵は2マス以上移動してから攻撃すると突撃ボーナス、敵を囲むと挟撃ボーナス。丘・森・城は防御に有利。攻撃側は20ターン以内に敵を全滅させるか本丸を占拠すれば勝利です。</li></ul>
+      <h3>後宮・王族</h3>
+      <ul><li>上部の「後宮」から妃を寵愛し（一季に一人）、子を授かりましょう。男子は15歳で一門の武将として出仕し、後継ぎになります。</li>
+      <li>姫が15歳になったら、他国の君主に嫁がせて婚姻同盟を結ぶか、家臣に嫁がせて忠誠を100にできます。他国に縁談を申し込んで妃を迎えることもできます。</li></ul>
+      <h3>技術者</h3>
+      <ul><li>各地には文化ごとの専門家（農業技師・商人・工匠・建築家・攻城技師・学者・鍛冶師・牧夫）がいます。自領か友好国にいる者を招聘し、都市に配置すると効果を発揮します（1都市2人まで・毎季給金）。</li></ul>
+      <h3>特産品交易</h3>
+      <ul><li>都市は特産品を生産・備蓄します。相場は産地から遠いほど高く、季節で変動します。</li>
+      <li>隊商宿のある都市から「交易・隊商」で交易路を開くと、毎季自動で特産品を運んで売り、帰りに相手の特産品を仕入れて戻ります。珍しい輸入品は民忠を高めます。敵地を通ると略奪の危険があります。</li></ul>
       <h3>人事・外交</h3>
       <ul><li>太守の政治力で産出と建設速度が、魅力で民忠が上がります。在野の人物は登用できます。</li>
       <li>贈物で友好度を上げ、同盟・停戦を結べます。武将は年を取り、やがて世を去ります。若い武将は15歳で出仕します。</li></ul>
@@ -380,9 +357,13 @@ export async function proposalDialog(app, pr) {
   const st = app.st;
   const n = st.nations[pr.from];
   const kind = pr.kind === 'alliance' ? '同盟' : `停戦（12季）`;
+  const princess = pr.kind === 'marriage' ? st.princesses[pr.princess] : null;
+  const text = princess
+    ? `<div class="row" style="align-items:flex-start;gap:12px">${portrait(princess, n.culture, n.color)}<div><p>「我が主君の姫、${esc(princess.name)}（${st.year - princess.birth}歳）を、貴殿の妃として迎えられたし」</p><p class="muted">受け入れると婚姻同盟が結ばれます。</p></div></div>`
+    : `<p>「我が国と${kind}を結ばれたし」</p>`;
   const ok = await modal({
-    title: '使者の来訪',
-    body: `<p><span class="swatch" style="background:${n.color}"></span><b>${n.name}</b>の${esc(ruler(st, pr.from)?.name ?? '')}から使者が来た。</p><p>「我が国と${kind}を結ばれたし」</p>`,
+    title: princess ? '縁談の使者' : '使者の来訪',
+    body: `<p><span class="swatch" style="background:${n.color}"></span><b>${n.name}</b>の${esc(ruler(st, pr.from)?.name ?? '')}から使者が来た。</p>${text}`,
     buttons: [{ label: '断る', value: false }, { label: '受け入れる', value: true, primary: true }],
     closeValue: false,
   });

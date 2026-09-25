@@ -3,6 +3,7 @@ import { chance, rnd } from './rng.js';
 import { nationGenerals, nationProvinces, unitPower, treaty, relation, log } from './state.js';
 import { adjustRelation } from './military.js';
 import { NEIGHBORS } from './geo.js';
+import { setRoyalHooks, aiMarriage } from './royal.js';
 
 export const TRUCE_TURNS = 12;
 
@@ -78,8 +79,11 @@ export function breakTreaty(st, from, to) {
 export function aiDiplomacy(st, nid) {
   const out = [];
   const me = st.nations[nid];
+  const neigh = Object.values(st.nations).filter((n) => n.alive && n.id !== nid && areNeighbors(st, nid, n.id));
+  const m = aiMarriage(st, nid, neigh.map((n) => n.id));
+  if (m) out.push(m);
   if (!chance(st, 0.12)) return out;
-  const others = Object.values(st.nations).filter((n) => n.alive && n.id !== nid && areNeighbors(st, nid, n.id));
+  const others = neigh;
   if (!others.length) return out;
   const target = others[Math.floor(rnd(st) * others.length)];
   if (treaty(st, nid, target.id)) return out;
@@ -93,3 +97,5 @@ export function aiDiplomacy(st, nid) {
   else propose(st, nid, target.id, kind);
   return out;
 }
+
+setRoyalHooks({ sign, relation: adjustRelation });
