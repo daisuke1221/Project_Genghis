@@ -6,6 +6,7 @@ import { log, PROV_DEF, generalsIn, unitCap } from './state.js';
 import { NEIGHBORS } from './geo.js';
 import { siegeAt, canBesiege, startSiege, assault, relieve, aiChooseSiege } from './siege.js';
 import { marchPaths, isSeaLink, addFatigue } from './warfare.js';
+import { seaCrossing } from './navy.js';
 
 // 参戦要請の処理（プレイヤーへの要請は hooks.callToArms で尋ねる）
 export async function handleCalls(st, calls, hooks = {}) {
@@ -64,6 +65,15 @@ export async function executeMove(st, nid, gids, from, to, hooks = {}) {
   }
   if (owner && !atWar(st, nid, owner)) await handleCalls(st, declareWar(st, nid, owner), hooks);
   const involved = nid === st.playerNation || owner === st.playerNation;
+  // 渡海：敵の水軍の迎撃や大風で、上陸できずに引き返すことがある
+  if (isSeaLink(from, to) && !siegeAt(st, to)) {
+    const sc = seaCrossing(st, nid, gids, from, to);
+    if (sc.report && involved) await hooks.naval?.(sc.report);
+    if (!sc.ok) {
+      for (const id of gids) if (st.generals[id]) st.generals[id].moved = true;
+      return { kind: 'naval', report: sc.report };
+    }
+  }
   // 城壁のある都市：強襲か包囲かを選ぶ
   if (plan.kind === 'battle' && canBesiege(st, nid, to)) {
     const existing = siegeAt(st, to);

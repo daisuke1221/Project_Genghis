@@ -116,7 +116,7 @@ export const SEA_SITES = [
   [23, 38], [20, 40], [26, 35], [31.5, 30.5],
 ];
 
-export const EXTRA_LINKS = [['egy', 'syr'], ['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw']];
+export const EXTRA_LINKS = [['egy', 'syr'], ['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw'], ['song', 'kyu'], ['ita', 'syr']];
 export const CUT_LINKS = [];
 
 // 勢力: id, 名称, 色, 文化, 首都, 領地, 好戦度
@@ -367,7 +367,7 @@ export const FORMATIONS = {
 };
 
 // 海を渡る経路（EXTRA_LINKS のうち海峡・海路のもの）
-export const SEA_LINKS = [['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw']];
+export const SEA_LINKS = [['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw'], ['song', 'kyu'], ['ita', 'syr']];
 
 export const SEASON_FARM = [0.6, 1.0, 2.0, 0.4];
 

@@ -221,7 +221,7 @@ export class WorldView {
       const gens = owner ? generalsIn(st, p.id, owner).length : 0;
       const sg = st.sieges?.[p.id];
       mk.label.innerHTML = `<div class="nm"><span class="dot" style="background:${color}"></span>${p.city}</div>` +
-        (owner ? `<div class="troops">兵 ${soldiers.toLocaleString()}${gens ? `・将${gens}` : ''}</div>` : '<div class="troops">空白地</div>') +
+        (owner ? `<div class="troops">兵 ${soldiers.toLocaleString()}${gens ? `・将${gens}` : ''}${prov.fleet?.ships ? ` <span class="fleet-tag">⚓${prov.fleet.ships}</span>` : ''}</div>` : '<div class="troops">空白地</div>') +
         (sg ? `<div class="siege-tag" style="border-color:${st.nations[sg.att]?.color}">⚔ ${st.nations[sg.att]?.name ?? ''}が包囲中</div>` : '') +
         (calamityTags(st, p.id).length ? `<div class="calamity-tag">${calamityTags(st, p.id).join('・')}</div>` : '');
       this.setSiegeRing(p.id, sg ? st.nations[sg.att]?.color : null);

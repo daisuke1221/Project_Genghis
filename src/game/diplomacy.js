@@ -198,8 +198,9 @@ export function refuseCall(st, ally, caller) {
 // 地方を奪った記録（和平交渉の材料）
 export function noteConquest(st, winner, loser) {
   if (!atWar(st, winner, loser)) return;
-  warsOf(st, winner)[loser].taken += 1;
-  warsOf(st, loser)[winner].taken -= 1;
+  const w = warsOf(st, winner)[loser], l = warsOf(st, loser)[winner];
+  if (w) w.taken += 1;
+  if (l) l.taken -= 1;
 }
 
 // 戦況：a から見た b との戦いの有利さ（1 で互角）

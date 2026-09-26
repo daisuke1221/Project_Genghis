@@ -4,6 +4,7 @@ import { chance, rnd, rint, pick } from './rng.js';
 import { PROV_DEF, nationProvinces, nationGenerals, addGeneral, randomGeneral, log, isActive } from './state.js';
 import { hasTrait, ensurePersonnel, RANKS } from './personnel.js';
 import { isSeaLink } from './warfare.js';
+import { tierOf } from './glory.js';
 
 const ruler = (st, nid) => st.generals[st.nations[nid]?.rulerId];
 
@@ -13,7 +14,7 @@ export function fame(st, nid) {
   if (!n?.alive) return 0;
   const r = ruler(st, nid);
   let f = 15 + nationProvinces(st, nid).length * 3 + ((r?.cha ?? 50) - 50) / 2 + ((n.trust ?? 60) - 60) / 4;
-  if (n.crowned) f += 15;
+  f += tierOf(st, nid) * 5;
   if (r && hasTrait(r, 'benevolent')) f += 5;
   return Math.max(0, Math.min(100, Math.round(f)));
 }
