@@ -169,7 +169,7 @@ async function aiAttack(st, nid, hooks) {
     const pool = [];
     for (const src of sources) {
       if (st.sieges?.[src]) continue; // 包囲されている城からは出られない
-      const gens = generalsIn(st, src, nid).filter((g) => !g.moved && g.unit?.soldiers > 0).sort((a, b) => unitPower(b) - unitPower(a));
+      const gens = generalsIn(st, src, nid).filter((g) => !g.moved && g.unit?.soldiers > 0 && !(g.wound > st.turn)).sort((a, b) => unitPower(b) - unitPower(a));
       const keep = threatOf(src) > 0 && gens.length > 1 ? 1 : 0; // 脅威があれば最弱の1人を守備に残す
       for (const g of gens.slice(0, gens.length - keep)) pool.push({ g, src });
     }

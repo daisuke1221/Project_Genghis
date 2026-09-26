@@ -184,6 +184,9 @@ export function applyBattle(st, result, attIds) {
     if (u.dead) {
       msgs.push(`${g.name}が討死した。`);
       killGeneral(st, g.id);
+    } else if (u.wounded) {
+      const n = woundGeneral(st, g.id);
+      msgs.push(`${g.name}が負傷した（${n}季のあいだ戦えない）。`);
     }
   }
   for (const id of attIds) if (st.generals[id]?.alive) st.generals[id].moved = true;
@@ -242,6 +245,25 @@ export function aiCaptiveDecision(st, captor, g) {
   if (isRuler) return chance(st, st.nations[captor].aggro * 0.5) ? 'execute' : 'release';
   if ((g.war + g.lead + g.pol) / 3 > 45) return 'recruit';
   return 'release';
+}
+
+// ---- 負傷 ----
+export function isWounded(st, g) { return !!(g?.wound && g.wound > st.turn); }
+export function woundGeneral(st, gid, seasons) {
+  const g = st.generals[gid];
+  const n = seasons ?? 2 + Math.floor(rnd(st) * 3);
+  g.wound = Math.max(g.wound ?? 0, st.turn + n);
+  return n;
+}
+// 季節ごと：傷が癒える
+export function healTick(st) {
+  for (const g of Object.values(st.generals)) {
+    if (!g.wound || !g.alive) continue;
+    if (g.wound <= st.turn) {
+      delete g.wound;
+      if (g.nation === st.playerNation) log(st, `${g.name}の傷が癒えた。`);
+    }
+  }
 }
 
 // ---- 死亡・継承・滅亡 ----

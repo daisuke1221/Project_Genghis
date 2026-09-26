@@ -2,7 +2,7 @@
 import { WALLS } from './data.js';
 import { NEIGHBORS } from './geo.js';
 import { PROV_DEF, generalsIn, unitPower, unitCap, log, nationProvinces } from './state.js';
-import { killGeneral, applyBattle } from './military.js';
+import { killGeneral, applyBattle, woundGeneral, isWounded } from './military.js';
 import { createBattle, autoResolve } from './battle.js';
 import { atWar, friendsOf } from './diplomacy.js';
 import { handleCaptives, gatherReinforcements } from './actions.js';
@@ -17,7 +17,7 @@ export const siegeAt = (st, pid) => sieges(st)[pid] || null;
 export function besiegers(st, pid) {
   const s = siegeAt(st, pid);
   if (!s) return [];
-  return s.gids.map((id) => st.generals[id]).filter((g) => g?.alive && g.nation === s.att && g.province === pid && g.unit?.soldiers > 0);
+  return s.gids.map((id) => st.generals[id]).filter((g) => g?.alive && g.nation === s.att && g.province === pid && g.unit?.soldiers > 0 && !isWounded(st, g));
 }
 export function defenders(st, pid) {
   const owner = st.provinces[pid].owner;
@@ -198,6 +198,7 @@ function applyLosses(st, result) {
     g.unit.soldiers = Math.max(0, Math.round(u.soldiers * (u.routed ? 0.8 : 1) / 10) * 10);
     g.unit.training = Math.min(100, g.unit.training + 3);
     if (u.dead) { log(st, `${g.name}が討死した。`, true); killGeneral(st, g.id); }
+    else if (u.wounded) { const n = woundGeneral(st, g.id); log(st, `${g.name}が負傷した（${n}季のあいだ戦えない）。`, g.nation === st.playerNation); }
   }
 }
 
@@ -206,7 +207,7 @@ export async function sally(st, pid, hooks = {}) {
   const s = siegeAt(st, pid);
   if (!s) return { ok: false };
   const owner = st.provinces[pid].owner;
-  const gens = defenders(st, pid).filter((g) => !g.moved);
+  const gens = defenders(st, pid).filter((g) => !g.moved && !isWounded(st, g));
   if (!gens.length) return { ok: false, reason: '動ける武将がいません' };
   const ids = gens.map((g) => g.id);
   const bids = besiegers(st, pid).map((g) => g.id);

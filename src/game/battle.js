@@ -80,11 +80,13 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
     war: g.war, lead: g.lead, pol: g.pol, cha: g.cha, nomad: nomad(g.nation), ruler: rulerIds.has(g.id),
     c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
     tp: 1 + Math.floor(g.pol / 40), hidden: false, confused: 0, commander: false,
+    protected: !!(st.options?.protectRuler && g.nation === st.playerNation && rulerIds.has(g.id)), wounded: false,
   });
+  const fit = (g) => g?.unit?.soldiers > 0 && !(g.wound && g.wound > st.turn);
   const attGens = [...attIds, ...(reinforce.att || [])].map((id) => st.generals[id]);
   const defGens = defIds ? defIds.map((id) => st.generals[id]) : defNation ? [...generalsIn(st, provinceId, defNation), ...(reinforce.def || []).map((id) => st.generals[id])] : [];
-  const att = attGens.filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'att'));
-  const dfd = defGens.filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'def'));
+  const att = attGens.filter(fit).map((g) => mk(g, 'att'));
+  const dfd = defGens.filter(fit).map((g) => mk(g, 'def'));
   // 冬の遠征：遊牧民以外は凍傷で兵を失う
   if (st.season === 3) {
     let lost = 0;
@@ -312,9 +314,15 @@ function applyLoss(b, u, loss, events) {
 function rout(b, u, events) {
   if (u.routed) return;
   u.routed = true;
-  if (u.soldiers <= 0 && brnd(b) < 0.12) u.dead = true;
-  else if (brnd(b) < 0.03) u.dead = true;
-  events.push({ type: 'rout', id: u.id, dead: u.dead });
+  if (!u.dead && !u.wounded) {
+    // 武力が高いほど生き延びやすい（武力95で約0.65倍、40で約1.2倍）
+    const wmul = Math.max(0.3, 1.6 - u.war / 100);
+    const pd = (u.soldiers <= 0 ? 0.12 : 0.03) * wmul;
+    const pw = (u.soldiers <= 0 ? 0.25 : 0.12) * wmul;
+    const x = brnd(b);
+    if (x < pd) { if (u.protected) u.wounded = true; else u.dead = true; } else if (x < pd + pw) u.wounded = true;
+  }
+  events.push({ type: 'rout', id: u.id, dead: u.dead, wounded: u.wounded });
   for (const x of activeUnits(b, u.side)) {
     if (hexDist(x.c, x.r, u.c, u.r) <= 2) x.morale -= 8;
   }
@@ -379,6 +387,57 @@ export function endPhase(b) {
     if (b.weather === 'heat' && u.side === 'att') u.morale -= 2;
     if (u.confused > 0) { u.confused -= 1; u.moved = true; u.acted = true; }
   }
+}
+
+// ---- 一騎討ち ----
+export const DUEL_MIN_WAR = 70;
+export function duelTargets(b, u) {
+  if (u.acted || u.routed || u.hidden || u.war < DUEL_MIN_WAR) return [];
+  return activeUnits(b, other(u.side)).filter((t) => !t.hidden && hexDist(u.c, u.r, t.c, t.r) === 1);
+}
+export function duelAcceptChance(b, a, t) {
+  if (t.war >= a.war - 10) return 0.9;
+  return Math.max(0.15, Math.min(0.9, 0.9 - (a.war - 10 - t.war) / 40));
+}
+export function duelWinChance(a, t) {
+  // 3本先取の勝率を近似
+  const p = a.war / (a.war + t.war);
+  return p * p * p * (1 + 3 * (1 - p) + 6 * (1 - p) * (1 - p));
+}
+
+export function duel(b, a, t) {
+  const events = [];
+  if (a.acted || a.routed || t.routed) return events;
+  a.acted = true; a.moved = true;
+  if (brnd(b) >= duelAcceptChance(b, a, t)) {
+    t.morale -= 15;
+    events.push({ type: 'duel', id: a.id, target: t.id, refused: true });
+    if (t.morale <= 0) rout(b, t, events);
+    checkEnd(b);
+    return events;
+  }
+  let ha = 3, ht = 3;
+  const rounds = [];
+  while (ha > 0 && ht > 0 && rounds.length < 9) {
+    const p = a.war / (a.war + t.war) + (brnd(b) - 0.5) * 0.15;
+    if (brnd(b) < p) { ht -= 1; rounds.push('a'); } else { ha -= 1; rounds.push('t'); }
+  }
+  const winner = ha > 0 ? a : t, loser = winner === a ? t : a;
+  const x = brnd(b);
+  let outcome = x < 0.35 ? 'killed' : x < 0.7 ? 'wounded' : 'fled';
+  if (outcome === 'killed' && loser.protected) outcome = 'wounded';
+  winner.morale = Math.min(100, winner.morale + 20);
+  for (const y of activeUnits(b, winner.side)) if (y !== winner) y.morale = Math.min(100, y.morale + 5);
+  for (const y of activeUnits(b, loser.side)) if (y !== loser) y.morale -= 5;
+  events.push({ type: 'duel', id: a.id, target: t.id, rounds, winner: winner.id, loser: loser.id, outcome });
+  if (outcome === 'killed') { loser.dead = true; rout(b, loser, events); }
+  else {
+    if (outcome === 'wounded') loser.wounded = true;
+    loser.morale -= outcome === 'wounded' ? 40 : 30;
+    if (loser.morale <= 0) rout(b, loser, events);
+  }
+  checkEnd(b);
+  return events;
 }
 
 // ---- 計略 ----
@@ -468,6 +527,9 @@ function aiAct(b, u) {
   const events = [];
   const enemies = activeUnits(b, other(u.side)).filter((t) => !t.hidden);
   if (!activeUnits(b, other(u.side)).length) { wait(b, u); return events; }
+  // 一騎討ち：武勇に自信があれば挑む
+  const dt = duelTargets(b, u).filter((t) => duelWinChance(u, t) >= 0.7);
+  if (dt.length && brnd(b) < 0.2) return duel(b, u, dt.sort((x, y) => (y.commander - x.commander) || (y.soldiers - x.soldiers))[0]);
   // 計略：条件が良ければ攻撃の代わりに使う
   const tac = aiTactic(b, u);
   if (tac) return useTactic(b, u, tac.id, tac.target);
@@ -578,6 +640,6 @@ export function battleResult(b) {
   return {
     winner: b.winner, reason: b.reason, turns: b.turn,
     provinceId: b.provinceId, fromProvince: b.fromProvince, attNation: b.attNation, defNation: b.defNation, weather: b.weather, notes: b.notes,
-    units: b.units.map((u) => ({ gid: u.gid, side: u.side, soldiers: u.soldiers, start: u.start, routed: u.routed, dead: u.dead })),
+    units: b.units.map((u) => ({ gid: u.gid, side: u.side, soldiers: u.soldiers, start: u.start, routed: u.routed, dead: u.dead, wounded: u.wounded })),
   };
 }

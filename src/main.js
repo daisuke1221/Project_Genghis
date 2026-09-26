@@ -361,7 +361,7 @@ class App {
       const u = g.unit;
       html += `<div class="gen-row"><span>${g.id === nat?.rulerId ? '👑' : ''}${esc(g.name)}${g.moved ? ' <span class="muted">済</span>' : ''}</span>
         <span class="muted">${showStats ? `武${g.war} 統${g.lead} 政${g.pol}` : ''}</span></div>
-        <div class="gen-row"><span class="muted">&nbsp;&nbsp;${u && u.soldiers > 0 ? `${UNIT_TYPES[u.type].name} ${fmt(u.soldiers)}（訓練${u.training}）` : '兵なし'}</span>${own ? `<span class="muted">忠${g.loyalty}</span>` : ''}</div>`;
+        <div class="gen-row"><span class="muted">&nbsp;&nbsp;${u && u.soldiers > 0 ? `${UNIT_TYPES[u.type].name} ${fmt(u.soldiers)}（訓練${u.training}）` : '兵なし'}${g.wound > st.turn ? ` <span class="neg">負傷・あと${g.wound - st.turn}季</span>` : ''}</span>${own ? `<span class="muted">忠${g.loyalty}</span>` : ''}</div>`;
     }
     html += '</div>';
     side.innerHTML = html;

@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import { cityYields, tickConstruction } from './city.js';
 import { aiNationTurn, delegateDevelop } from './ai.js';
-import { killGeneral } from './military.js';
+import { killGeneral, healTick } from './military.js';
 import { tradeTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
@@ -93,6 +93,7 @@ export function seasonTick(st) {
     nat.food = Math.min(nat.food, 60000);
   }
   diplomacyTick(st);
+  healTick(st);
   techTick(st);
   royalTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;

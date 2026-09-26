@@ -6,7 +6,7 @@ import { UNIT_TYPES } from '../game/data.js';
 import {
   COLS, ROWS, BATTLE_TERRAIN, hkey, tileOf, unitAt, reachable, moveUnit, attack, targetsFrom, wait as waitUnit,
   endPhase, aiStep, retreat, battleResult, activeUnits, estimateDamage, attackRange,
-  WEATHER, TACTICS, tacticOptions, tacticChance, useTactic,
+  WEATHER, TACTICS, tacticOptions, tacticChance, useTactic, duelTargets, duel, duelAcceptChance, duelWinChance,
 } from '../game/battle.js';
 import { PROV_DEF } from '../game/state.js';
 import { bindPointer, pickAt, tween, tweenFn, wait, easeOut } from './engine.js';
@@ -174,7 +174,7 @@ export class BattleView {
     const pct = Math.max(0, u.soldiers / Math.max(1, u.start));
     const col = u.side === this.playerSide ? '#6fdc6f' : '#ff6a5a';
     o.el.className = `unit-label${u.acted && u.side === this.b.side ? ' done' : ''}`;
-    const tags = `${u.commander ? '<span class="cmd">★</span>' : ''}${u.ally ? '<span style="color:#9fd0ff">援</span>' : ''}${u.hidden ? '<span class="hid">伏</span>' : ''}${u.confused ? '<span class="neg">乱</span>' : ''}`;
+    const tags = `${u.commander ? '<span class="cmd">★</span>' : ''}${u.ally ? '<span style="color:#9fd0ff">援</span>' : ''}${u.hidden ? '<span class="hid">伏</span>' : ''}${u.confused ? '<span class="neg">乱</span>' : ''}${u.wounded ? '<span class="neg">傷</span>' : ''}`;
     o.el.innerHTML = `<div>${tags}${u.name}<span style="opacity:.8">［${T.short}］</span></div><div>${u.soldiers.toLocaleString()}</div>` +
       `<div class="hp"><i style="width:${pct * 100}%;background:${col}"></i></div><div class="mo"><i style="width:${Math.max(0, u.morale)}%"></i></div>`;
     o.g.visible = !u.routed && !(u.hidden && u.side !== this.playerSide);
@@ -220,6 +220,7 @@ export class BattleView {
       const id = e.target.closest('[data-tac]')?.dataset.tac;
       if (!id || !this.canAct() || !this.selected) return;
       if (id === 'rally') { this.doTactic(this.selected, 'rally', null); return; }
+      if (id === 'duel') { this.tacticMode = this.tacticMode === 'duel' ? null : 'duel'; this.showHighlights(this.selected); this.updateUI(); return; }
       this.tacticMode = this.tacticMode === id ? null : id;
       this.showHighlights(this.selected);
       this.updateUI();
@@ -240,7 +241,7 @@ export class BattleView {
     $('#bt-tac').innerHTML = sel ? `<span class="muted">計略${sel.tp}回</span>` + ['fire', 'confuse', 'rally'].map((id) => {
       const ok = opts.some((o) => o.id === id);
       return `<button class="btn small ${this.tacticMode === id ? 'active' : ''}" data-tac="${id}" ${ok ? '' : 'disabled'} title="${TACTICS[id].desc}">${TACTICS[id].name}</button>`;
-    }).join('') : '';
+    }).join('') + (sel ? `<button class="btn small ${this.tacticMode === 'duel' ? 'active' : ''}" data-tac="duel" ${!dis && duelTargets(this.b, sel).length ? '' : 'disabled'} title="武力70以上。隣接する敵将に一騎討ちを挑む（3本先取）">一騎討ち</button>` : '') : '';
     $('#bt-end').disabled = dis;
     $('#bt-retreat').disabled = this.busy;
     this.showInfo(this.hoverUnit || this.selected);
@@ -255,7 +256,8 @@ export class BattleView {
     const W = WEATHER[this.b.weather];
     if (W.desc) html += `<div class="muted">${W.glyph} ${W.name}：${W.desc}</div>`;
     if (this.b.notes?.length) html += `<div class="muted">${this.b.notes.slice(-3).join('<br>')}</div>`;
-    if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">${TACTICS[this.tacticMode].name}の成功率：${Math.round(tacticChance(this.b, this.selected, this.tacticMode, u) * 100)}%</div>`;
+    if (this.tacticMode === 'duel' && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">一騎討ち：応じる確率 ${Math.round(duelAcceptChance(this.b, this.selected, u) * 100)}%・勝率 約${Math.round(duelWinChance(this.selected, u) * 100)}%</div>`;
+    else if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">${TACTICS[this.tacticMode].name}の成功率：${Math.round(tacticChance(this.b, this.selected, this.tacticMode, u) * 100)}%</div>`;
     if (u) {
       const T = UNIT_TYPES[u.type];
       const tt = tileOf(this.b, u.c, u.r).t;
@@ -337,7 +339,7 @@ export class BattleView {
     const won = b.winner === this.playerSide;
     audio.jingle(won ? 'win' : 'lose');
     const reason = { annihilated: '敵軍を壊滅させた', keep: '本丸を占拠した', timeout: '日没により攻撃側が撤退した', retreat: '退却した' }[b.reason] ?? '';
-    const lines = b.units.map((u) => `<tr><td>${u.side === this.playerSide ? '自' : '敵'}</td><td>${u.name}</td><td>${u.start.toLocaleString()} → ${u.soldiers.toLocaleString()}</td><td>${u.dead ? '<span class="neg">討死</span>' : u.routed ? '敗走' : ''}</td></tr>`).join('');
+    const lines = b.units.map((u) => `<tr><td>${u.side === this.playerSide ? '自' : '敵'}</td><td>${u.name}</td><td>${u.start.toLocaleString()} → ${u.soldiers.toLocaleString()}</td><td>${u.dead ? '<span class="neg">討死</span>' : u.wounded ? '<span class="neg">負傷</span>' : u.routed ? '敗走' : ''}</td></tr>`).join('');
     const div = document.createElement('div');
     div.className = 'modal-back';
     div.innerHTML = `<div class="modal"><h2>${won ? '勝利' : '敗北'}</h2><div class="body"><p>${reason}。</p>
@@ -357,6 +359,7 @@ export class BattleView {
       else if (ev.type === 'attack') await this.animAttack(ev);
       else if (ev.type === 'rout') await this.animRout(ev);
       else if (ev.type === 'tactic') await this.animTactic(ev);
+      else if (ev.type === 'duel') await this.animDuel(ev);
       else if (ev.type === 'ambush') { const o = this.unitObjs.get(ev.id); this.refreshAll(); this.floatNum(o.g.position, '伏兵！', 'gold'); audio.sfx('horn'); await wait(0.4 * this.sp()); }
       else if (ev.type === 'collapse') {
         const u = this.b.units.find((x) => x.id === ev.id);
@@ -414,6 +417,41 @@ export class BattleView {
     if (ev.counter) this.floatNum(ao.g.position, `-${ev.counter}`, 'blue');
     this.refreshUnit(a); this.refreshUnit(t);
     await wait(0.25 * this.sp());
+  }
+
+  // 一騎討ち：両将が中央に進み出て打ち合う
+  async animDuel(ev) {
+    const a = this.b.units.find((x) => x.id === ev.id), t = this.b.units.find((x) => x.id === ev.target);
+    const box = document.createElement('div');
+    box.className = 'duel-box';
+    this.overlay.appendChild(box);
+    const head = `<div class="duel-title">一騎討ち</div><div class="duel-names"><span>${a.name}<small>武${a.war}</small></span><b>VS</b><span>${t.name}<small>武${t.war}</small></span></div>`;
+    audio.sfx('horn');
+    if (ev.refused) {
+      box.innerHTML = `${head}<div class="duel-log">${t.name}は一騎討ちに応じなかった！<br>臆病ぶりに兵の士気が下がった。</div>`;
+      await wait(1.4 * this.sp());
+      box.remove();
+      return;
+    }
+    const ao = this.unitObjs.get(a.id).g, to = this.unitObjs.get(t.id).g;
+    const mid = ao.position.clone().lerp(to.position, 0.5);
+    let hitsA = 0, hitsT = 0;
+    const lines = [];
+    for (const r of ev.rounds) {
+      if (r === 'a') hitsA++; else hitsT++;
+      lines.push(r === 'a' ? `${a.name}の一撃！` : `${t.name}の一撃！`);
+      box.innerHTML = `${head}<div class="duel-score">${'●'.repeat(hitsA)}${'○'.repeat(3 - hitsA)}　${'●'.repeat(hitsT)}${'○'.repeat(3 - hitsT)}</div><div class="duel-log">${lines.slice(-3).join('<br>')}</div>`;
+      audio.sfx('clash');
+      this.shake(r === 'a' ? to : ao);
+      this.floatNum(mid, '⚔', 'gold');
+      await wait(0.45 * this.sp());
+    }
+    const w = this.b.units.find((x) => x.id === ev.winner), l = this.b.units.find((x) => x.id === ev.loser);
+    const res = { killed: `${l.name}、討ち取られる！`, wounded: `${l.name}は深手を負った！`, fled: `${l.name}は逃げ去った！` }[ev.outcome];
+    box.innerHTML = `${head}<div class="duel-log"><b>${w.name}の勝利！</b><br>${res}</div>`;
+    await wait(1.4 * this.sp());
+    box.remove();
+    this.refreshAll();
   }
 
   async animTactic(ev) {
@@ -497,6 +535,18 @@ export class BattleView {
     const [c, r] = hx;
     const u = unitAt(this.b, c, r);
     const sel = this.selected;
+    if (sel && this.tacticMode === 'duel') {
+      if (u && duelTargets(this.b, sel).includes(u)) {
+        this.busy = true; this.tacticMode = null; this.clearHighlights();
+        await this.animate(duel(this.b, sel, u));
+        this.busy = false; this.deselect();
+        if (this.b.over) return this.finish();
+        this.checkAllDone(); this.maybeAuto();
+        return;
+      }
+      this.tacticMode = null; this.showHighlights(sel); this.updateUI();
+      return;
+    }
     if (sel && this.tacticMode) {
       const opt = tacticOptions(this.b, sel).find((o) => o.id === this.tacticMode);
       if (u && opt?.targets.includes(u)) { await this.doTactic(sel, this.tacticMode, u); return; }
@@ -584,6 +634,10 @@ export class BattleView {
       m.position.set(x, TH[tileOf(this.b, c, r).t] - 0.05, z);
       this.hlGroup.add(m);
     };
+    if (this.tacticMode === 'duel') {
+      for (const t of duelTargets(this.b, u)) add(t.c, t.r, 0xffd35a, 0.65);
+      return;
+    }
     if (this.tacticMode) {
       const opt = tacticOptions(this.b, u).find((o) => o.id === this.tacticMode);
       for (const t of opt?.targets ?? []) add(t.c, t.r, 0xff9a2a, 0.6);

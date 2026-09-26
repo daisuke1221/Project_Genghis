@@ -212,3 +212,12 @@ input[type=range] { accent-color: var(--gold); }
 .tactic-bar .btn.small { font-size: 12px; }
 .unit-label .cmd { color: #ffd76a; }
 .unit-label .hid { color: #9fe09f; }
+
+.duel-box { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); min-width: 360px; padding: 14px 20px; text-align: center;
+  background: linear-gradient(#2a1a10, #140c07); border: 2px solid var(--gold); border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,.8); pointer-events: none; }
+.duel-title { font-size: 26px; font-weight: 900; color: var(--gold); letter-spacing: .3em; }
+.duel-names { display: flex; justify-content: space-around; align-items: center; margin: 8px 0; font-size: 17px; font-weight: 700; }
+.duel-names small { display: block; font-size: 12px; color: var(--ink-dim); font-weight: 400; }
+.duel-names b { color: var(--red); }
+.duel-score { font-size: 20px; letter-spacing: .1em; color: #ffd76a; }
+.duel-log { margin-top: 6px; font-size: 15px; line-height: 1.7; }

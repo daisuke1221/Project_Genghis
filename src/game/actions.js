@@ -22,7 +22,7 @@ export function gatherReinforcements(st, nid, enemy, target, max = 2) {
   for (const q of NEIGHBORS[target]) {
     const o = st.provinces[q].owner;
     if (!friends.includes(o)) continue;
-    const gens = generalsIn(st, q, o).filter((g) => !g.moved && g.unit?.soldiers >= unitCap(g) * 0.4);
+    const gens = generalsIn(st, q, o).filter((g) => !g.moved && g.unit?.soldiers >= unitCap(g) * 0.4 && !(g.wound > st.turn));
     if (gens.length < 2) continue; // 自国の守りを空にはしない
     gens.sort((a, b) => b.unit.soldiers - a.unit.soldiers);
     out.push(...gens.slice(0, gens.length - 1));
