@@ -10,6 +10,7 @@ import {
 } from '../game/diplomacy.js';
 import { handleCalls } from '../game/actions.js';
 import { adjustRelation } from '../game/military.js';
+import { giftGoodsSource, giftGoods, TRIBUTE_GOODS_QTY, setEmbargo, embargoed } from '../game/trade.js';
 import { chanceText, strategistOf, discordChance, discordAvailable, sowDiscord, DISCORD_COST } from '../game/strategist.js';
 import {
   PERSONALITIES, personality, bonds, trustOf, hasPact, pactChance, proposePact, endPact, tributeChance, signTribute, tributeInfo,
@@ -80,7 +81,11 @@ export function diplomacyDialog(app, focus) {
           </div>`;
         const btn = (a, label, p, extra = '', dis = false) => `<button class="btn small" data-a="${a}" ${extra} ${dis ? 'disabled' : ''}>${label}</button>${p !== undefined ? chanceText(st, me, p, `dip:${a}:${nid}:${extra}:${terms.kind}:${terms.gold}:${terms.province}:${hostageId}`) : ''}`;
         const gold = st.nations[me].gold;
-        h += `<div class="sect"><b>贈物</b><div class="row">${btn('gift300', '300金を贈る', undefined, '', gold < 300)}${btn('gift1000', '1000金を贈る', undefined, '', gold < 1000)}</div></div>`;
+        const gsrc = giftGoodsSource(st, me)[0];
+        h += `<div class="sect"><b>贈物</b><div class="row">${btn('gift300', '300金を贈る', undefined, '', gold < 300)}${btn('gift1000', '1000金を贈る', undefined, '', gold < 1000)}
+          ${btn('giftgoods', gsrc ? `献上品：${gsrc.good}${TRIBUTE_GOODS_QTY}荷（${PROV_DEF[gsrc.pid].city}から）` : '献上品（在庫不足）', undefined, gsrc ? `data-src="${gsrc.pid}"` : '', !gsrc)}</div>
+          <div class="muted small">献上品は相手の地での相場で価値が決まり、贅沢品（絹・陶磁器・宝石など）は喜ばれます。</div></div>`;
+        h += `<div class="sect"><b>禁輸</b> ${st.nations[me].embargo?.[nid] ? `<span class="neg">禁輸中</span> ${btn('unembargo', '禁輸を解く')}` : `${btn('embargo', 'この国と交易を断つ', undefined, '', embargoed(st, me, nid))}<span class="muted small">互いの交易路が途絶え、関係が悪化します</span>`}</div>`;
         if (war) {
           const w = st.nations[me].wars[nid];
           const s = warScore(st, me, nid);
@@ -196,6 +201,17 @@ export function diplomacyDialog(app, focus) {
         const a = b.dataset.a, nid = sel, name = st.nations[nid].name;
         let r;
         switch (a) {
+          case 'giftgoods': {
+            r = giftGoods(st, me, nid, b.dataset.src);
+            if (r.ok) { audio.sfx('coin'); toast(`${name}に${r.good}を献上し、友好度が${r.gain}上がった`); } else toast(r.reason);
+            break;
+          }
+          case 'embargo':
+            if (await confirmBox('禁輸', `${name}との交易を断ちますか？（互いの交易路は途絶えます）`)) { setEmbargo(st, me, nid, true); toast(`${name}への禁輸を始めた`); }
+            break;
+          case 'unembargo':
+            setEmbargo(st, me, nid, false); toast(`${name}への禁輸を解いた`);
+            break;
           case 'discord':
             r = sowDiscord(st, me, nid, discordWith);
             if (!r.ok) toast(r.reason); else { audio.sfx(r.success ? 'coin' : 'error'); toast(r.text); }

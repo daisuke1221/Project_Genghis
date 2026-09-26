@@ -2,7 +2,7 @@
 import { PROVINCE_TERRAIN, BUILDINGS, WALLS, SEASON_FARM, CLEAR_FOREST_COST, PROVINCES } from './data.js';
 import { rnd, rint, chance, pick } from './rng.js';
 import { techBonus } from './tech.js';
-import { importLoyalty } from './trade.js';
+import { importLoyalty, importEffects } from './trade.js';
 import { adminMods } from './admin.js';
 import { knows } from './research.js';
 
@@ -164,7 +164,8 @@ export function cityYields(st, pid, season = st.season) {
     }
   }
   tot.recruit += Math.round(city.pop * 0.02 / 50) * 50;
-  tot.trainNew += tb.trainNew;
+  const ie = importEffects(city);
+  tot.trainNew += tb.trainNew + ie.trainNew;
   tot.train += tb.train;
   tot.speed += tb.speed;
   tot.loyalty += tb.loyalty + importLoyalty(city);
@@ -176,7 +177,7 @@ export function cityYields(st, pid, season = st.season) {
   tot.gold = Math.round((tot.gold + tot.tax) * polMul * am.goldMul * (p.owner && knows(st, p.owner, 'paper_money') ? 1.08 : 1));
   tot.speed += gov ? gov.pol / 100 : 0;
   tot.speed = Math.min(tot.speed, 3);
-  tot.food = Math.round(tot.food * (gov ? 0.9 + gov.pol / 500 : 0.85) * am.farmMul * (p.owner && knows(st, p.owner, 'qanat') ? 1.1 : 1));
+  tot.food = Math.round(tot.food * (1 + ie.food) * (gov ? 0.9 + gov.pol / 500 : 0.85) * am.farmMul * (p.owner && knows(st, p.owner, 'qanat') ? 1.1 : 1));
   tot.foodUse = Math.round(city.pop * 0.01);
   tot.loyaltyTarget = Math.round(45 + tot.loyalty * 2 + (gov ? (gov.cha - 50) / 4 : -5) + am.loyaltyAdj);
   return tot;

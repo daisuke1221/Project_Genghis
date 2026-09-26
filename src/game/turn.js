@@ -8,7 +8,7 @@ import {
 import { cityYields, tickConstruction } from './city.js';
 import { aiNationTurn, delegateDevelop } from './ai.js';
 import { killGeneral, healTick } from './military.js';
-import { tradeTick } from './trade.js';
+import { tradeTick, ortoqTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
 import { courtTick, educationYear } from './court.js';
@@ -52,6 +52,7 @@ export function seasonTick(st) {
   const player = st.playerNation;
   const income = {};
   tradeTick(st, (t, imp) => log(st, t, imp));
+  ortoqTick(st, (t, imp) => log(st, t, imp));
   siegeTick(st);
   supplyTick(st);
   mercTick(st);

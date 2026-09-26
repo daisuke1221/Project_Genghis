@@ -15,7 +15,7 @@ import { techsIn, availableTechs, hireTech, hireCost, assignTech, dismissTech, T
 import { INNOVATIONS, INNOVATION_ORDER, knows, available as innovAvailable, innovCost, researchRate, setResearch } from '../game/research.js';
 import {
   priceAt, routeQuote, createRoute, cancelRoute, routesFrom, maxRoutes, maxRouteLength, routeCapacity, goodsProduction,
-  sellGoods, GOOD_NAMES, DIST,
+  sellGoods, GOOD_NAMES, DIST, categoryOf, CATEGORY_INFO, isHub, isPort, canSail, ESCORT_COST, investOrtoq, ortoqRate, ORTOQ_TERM,
 } from '../game/trade.js';
 import { cityYields } from '../game/city.js';
 import { TRAITS } from '../game/personnel.js';
@@ -288,36 +288,46 @@ export function tradeDialog(app, pid) {
         const markets = (y.counts.market || 0) + (y.counts.caravan || 0);
         const rate = Math.min(1.5, 1 + markets * 0.05);
         let html = `<div class="tabs"><button class="btn small ${tab === 'routes' ? 'active' : ''}" data-tab="routes">隊商・交易路</button>
-          <button class="btn small ${tab === 'market' ? 'active' : ''}" data-tab="market">市場・相場</button></div>`;
+          <button class="btn small ${tab === 'market' ? 'active' : ''}" data-tab="market">市場・相場</button>
+          <button class="btn small ${tab === 'ortoq' ? 'active' : ''}" data-tab="ortoq">オルトク（出資）</button></div>`;
         const spec = def.specialty;
         const stock = c.goods?.[spec] ?? 0;
         html += `<div class="row muted" style="gap:14px;margin-bottom:6px"><span>特産品：<b style="color:var(--ink)">${spec}</b> 在庫 ${fmt(stock)}荷（+${goodsProduction(st, pid)}/季）</span>
           <span>地元相場 ${priceAt(st, pid, spec)}金/荷</span><span>金 ${fmt(nat.gold)}</span>
-          ${(c.imports || []).length ? `<span>輸入品：${c.imports.join('・')}（民忠↑）</span>` : ''}</div>`;
+          ${(c.imports || []).length ? `<span>輸入品：${c.imports.map((g) => `${g}${categoryOf(g) ? `<span class="small">（${CATEGORY_INFO[categoryOf(g)].name}）</span>` : ''}`).join('・')}</span>` : ''}
+          ${isHub(pid) ? '<span class="role-tag">交易の要衝</span>' : ''}${isPort(pid) ? ' <span class="role-tag">港</span>' : ''}</div>`;
         if (tab === 'routes') {
           const routes = routesFrom(st, pid);
           const mr = maxRoutes(st, pid);
           html += `<p class="muted">隊商宿の合計Lv ${mr}：交易路 ${routes.length}/${mr}本・1本あたり${routeCapacity(st, pid)}荷・最大${maxRouteLength(st, pid)}地方先まで。
-            隊商は毎季、特産品を運んで売り、帰りに相手の特産品を仕入れて戻ります。遠いほど高く売れますが、敵地を通ると略奪の危険があります。他国の都市では売上の10%が関税になり、その国との友好度が少しずつ上がります。</p>`;
+            隊商は毎季、特産品を運んで売り、帰りに相手の特産品を仕入れて戻ります。遠いほど高く売れますが、同じ都市に売り続けると値崩れします。敵地を通ると略奪の危険があり、護衛（毎季${ESCORT_COST}金）をつけると危険が大きく減ります。他国の都市では売上の10%が関税、他国が押さえる交易の要衝を通ると5%ずつ通過税がかかります（通商条約があれば免除）。港どうしは海路でも結べます（隊商宿の合計Lv2以上）。</p>`;
           html += `<h3>開設中の交易路</h3><table class="list"><tr><th>行き先</th><th>往路</th><th>復路</th><th>見込み利益</th><th>危険</th><th>前季</th><th></th></tr>
             ${routes.map((r) => {
-              const q = routeQuote(st, nid, r.from, r.to);
+              const q = routeQuote(st, nid, r.from, r.to, undefined, { sea: r.sea, escort: r.escort });
               const last = r.last ? (r.last.raided ? '<span class="neg">略奪</span>' : `<span class="pos">+${fmt(r.last.profit)}</span>`) : '―';
-              return `<tr><td>${PROV_DEF[r.to].city}（${esc(st.nations[st.provinces[r.to].owner]?.name ?? '')}）</td>
+              return `<tr><td>${r.sea ? '⛵' : '🐫'} ${PROV_DEF[r.to].city}（${esc(st.nations[st.provinces[r.to].owner]?.name ?? '')}）${q.ok && q.transit ? `<br><span class="muted small">通過税${q.transit}金</span>` : ''}</td>
                 <td>${q.ok ? `${q.outGood}→${q.outSell}金` : '<span class="neg">×</span>'}</td><td>${q.ok && q.retQty ? `${q.retGood} ${q.retBuy}→${q.retSell}` : '―'}</td>
                 <td>${q.ok ? fmt(q.profit) : esc(q.reason)}</td><td>${q.ok ? riskWord(q.risk) : ''}</td><td>${last}</td>
-                <td><button class="btn small" data-cancel="${r.id}">廃止</button></td></tr>`;
+                <td><button class="btn small ${r.escort ? 'active' : ''}" data-escort="${r.id}" title="毎季${ESCORT_COST}金で略奪の危険を6割減らす">護衛${r.escort ? 'あり' : 'なし'}</button> <button class="btn small" data-cancel="${r.id}">廃止</button></td></tr>`;
             }).join('') || '<tr><td colspan="7" class="muted">なし</td></tr>'}</table>`;
           if (mr <= 0) html += '<p class="neg">交易路を開くには、この都市の箱庭に「隊商宿」を建ててください。</p>';
           else {
-            const cands = PROVINCES.map((p) => ({ p, q: routeQuote(st, nid, pid, p.id) })).filter((x) => x.q.ok && !routes.some((r) => r.to === x.p.id))
-              .sort((a, b) => b.q.profit * (1 - b.q.risk) - a.q.profit * (1 - a.q.risk)).slice(0, 14);
+            const cands = PROVINCES.flatMap((p) => [{ p, q: routeQuote(st, nid, pid, p.id) }, ...(canSail(st, pid, p.id) ? [{ p, q: routeQuote(st, nid, pid, p.id, undefined, { sea: true }) }] : [])])
+              .filter((x) => x.q.ok && !routes.some((r) => r.to === x.p.id))
+              .sort((a, b) => b.q.profit * (1 - b.q.risk) - a.q.profit * (1 - a.q.risk)).slice(0, 16);
             html += `<h3>新しい交易路の候補</h3><table class="list"><tr><th>行き先</th><th>距離</th><th>往路（${spec}）</th><th>復路</th><th>関税</th><th>見込み利益/季</th><th>危険</th><th></th></tr>
-              ${cands.map(({ p, q }) => `<tr><td><span class="swatch" style="background:${st.nations[st.provinces[p.id].owner]?.color}"></span>${p.city}</td><td>${q.dist}</td>
-                <td>${q.qty}荷×${q.outSell}金</td><td>${q.retQty ? `${q.retGood} ${q.retBuy}→${q.retSell}` : '―'}</td><td>${q.tariff || '―'}</td>
+              ${cands.map(({ p, q }) => `<tr><td><span class="swatch" style="background:${st.nations[st.provinces[p.id].owner]?.color}"></span>${q.sea ? '⛵' : ''}${p.city}${isHub(p.id) ? ' <span class="muted small">要衝</span>' : ''}</td><td>${q.sea ? `海路${q.dist}` : q.dist}</td>
+                <td>${q.qty}荷×${q.outSell}金</td><td>${q.retQty ? `${q.retGood} ${q.retBuy}→${q.retSell}` : '―'}</td><td>${(q.tariff + q.transit) || '―'}</td>
                 <td><b class="${q.profit > 0 ? 'pos' : 'neg'}">${fmt(q.profit)}</b></td><td>${riskWord(q.risk)}</td>
-                <td><button class="btn small" data-open="${p.id}" ${routes.length >= mr ? 'disabled' : ''}>開設</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">交易できる相手がいません（友好度0以上の国か自領が必要）</td></tr>'}</table>`;
+                <td><button class="btn small" data-open="${p.id}" data-sea="${q.sea ? 1 : ''}" ${routes.length >= mr ? 'disabled' : ''}>開設</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">交易できる相手がいません（友好度0以上の国か自領が必要）</td></tr>'}</table>`;
           }
+        } else if (tab === 'ortoq') {
+          const os = nat.ortoq ?? [];
+          html += `<p class="muted">オルトク（商人組合）に出資すると、${ORTOQ_TERM}季のあいだ毎季配当が入り、期限が来ると元手が戻ります。ただし隊商が消息を絶って元手の一部を失うこともあります。配当率はモンゴル・テュルク・イスラームの国や、交易路の多い国ほど高くなります。</p>
+            <div class="sect">現在の配当率：<b>${(ortoqRate(st, nid) * 100).toFixed(1)}%/季</b>
+            <div class="row" style="margin-top:4px">${[500, 1000, 2000, 5000].map((v) => `<button class="btn small" data-invest="${v}" ${nat.gold >= v ? '' : 'disabled'}>${fmt(v)}金を出資</button>`).join('')}</div></div>
+            <table class="list"><tr><th>元手</th><th>配当率</th><th>これまでの配当</th><th>期限</th></tr>
+            ${os.map((o) => `<tr><td>${fmt(o.amount)}金</td><td>${(o.rate * 100).toFixed(1)}%</td><td>${fmt(o.earned)}金</td><td>あと${o.until - st.turn}季</td></tr>`).join('') || '<tr><td colspan="4" class="muted">出資していません</td></tr>'}</table>`;
         } else {
           const buyFood = Math.round(130 * rate), sellFood = Math.round(55 * rate), buyHorse = Math.round(100 * rate);
           html += `<div class="row" style="margin:6px 0 10px">
@@ -327,10 +337,12 @@ export function tradeDialog(app, pid) {
               <button class="btn small" data-t="sf" ${nat.food >= 200 ? '' : 'disabled'}>食糧200→${sellFood * 2}金</button>
               <button class="btn small" data-t="bh" ${nat.gold >= 150 ? '' : 'disabled'}>150金→馬${buyHorse}頭</button></div>
             <p class="muted">この都市での各地の特産品の相場（1荷あたり）。産地から遠いほど高く、季節ごとに変動します。</p>
-            <table class="list"><tr><th>品物</th><th>産地</th><th>産地からの距離</th><th>相場</th><th>動向</th></tr>
+            <p class="muted">品物の種類：${Object.values(CATEGORY_INFO).map((c) => `<b>${c.name}</b>（${c.desc}）`).join('／')}。輸入された品はその都市に効果があります。</p>
+            <table class="list"><tr><th>品物</th><th>種類</th><th>産地</th><th>産地からの距離</th><th>相場</th><th>動向</th></tr>
             ${GOOD_NAMES.map((g) => ({ g, pr: priceAt(st, pid, g) })).sort((a, b) => b.pr - a.pr).map(({ g, pr }) => {
               const m = st.market[g];
-              return `<tr><td>${g}</td><td>${GOODS[g].sources.map((s) => PROV_DEF[s].city).join('・')}</td><td>${DIST[g][pid]}</td><td>${pr}</td>
+              const glut = c.glut?.[g] ?? 0;
+              return `<tr><td>${g}</td><td class="small">${categoryOf(g) ? CATEGORY_INFO[categoryOf(g)].name : '―'}</td><td>${GOODS[g].sources.map((s) => PROV_DEF[s].city).join('・')}</td><td>${DIST[g][pid]}</td><td>${pr}${glut >= 0.05 ? ' <span class="neg small">だぶつき</span>' : ''}</td>
                 <td class="${m > 1.08 ? 'pos' : m < 0.92 ? 'neg' : ''}">${m > 1.08 ? '高騰' : m < 0.92 ? '下落' : '平常'}</td></tr>`;
             }).join('')}</table>`;
         }
@@ -340,7 +352,9 @@ export function tradeDialog(app, pid) {
         const d = e.target.dataset;
         const nat = st.nations[nid], c = st.provinces[pid].city;
         if (d.tab) { tab = d.tab; render(); return; }
-        if (d.open) { const r = createRoute(st, nid, pid, d.open); if (r.ok) { audio.sfx('coin'); toast(`${PROV_DEF[d.open].city}への交易路を開いた`); } else toast(r.reason); }
+        if (d.open) { const r = createRoute(st, nid, pid, d.open, { sea: !!d.sea }); if (r.ok) { audio.sfx('coin'); toast(`${PROV_DEF[d.open].city}への${d.sea ? '海路' : '交易路'}を開いた`); } else toast(r.reason); }
+        if (d.escort) { const r = st.routes.find((x) => x.id === Number(d.escort)); if (r) r.escort = !r.escort; }
+        if (d.invest) { const r = investOrtoq(st, nid, Number(d.invest)); if (r.ok) { audio.sfx('coin'); toast(`${fmt(Number(d.invest))}金をオルトクに出資した`); } else toast(r.reason); }
         if (d.cancel) cancelRoute(st, Number(d.cancel));
         if (d.sell) { const g = sellGoods(st, pid, def.specialty, d.sell === 'all' ? 99999 : 10); if (g) { audio.sfx('coin'); toast(`${fmt(g)}金で売れた`); } }
         const y = cityYields(st, pid);
@@ -349,7 +363,7 @@ export function tradeDialog(app, pid) {
         if (d.t === 'sf') { nat.food -= 200; nat.gold += Math.round(55 * rate) * 2; }
         if (d.t === 'bh') { nat.gold -= 150; c.horses += Math.round(100 * rate); }
         if (d.t) audio.sfx('coin');
-        if (d.open || d.cancel || d.sell || d.t) { render(); app.refresh(); }
+        if (d.open || d.cancel || d.sell || d.t || d.escort || d.invest) { render(); app.refresh(); }
       };
       render();
     },
