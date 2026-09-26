@@ -78,7 +78,7 @@ export function diplomacyDialog(app, focus) {
             ${vassalsOf(st, nid).length ? `<span>従属国</span><span>${vassalsOf(st, nid).map((v) => st.nations[v].name).join('、')}</span>` : ''}
             ${lordOf(st, nid) ? `<span>宗主国</span><span>${st.nations[lordOf(st, nid)].name}</span>` : ''}
           </div>`;
-        const btn = (a, label, p, extra = '', dis = false) => `<button class="btn small" data-a="${a}" ${extra} ${dis ? 'disabled' : ''}>${label}${p !== undefined && p > 0 ? `<span class="muted">（${chanceText(st, me, p, `dip:${a}:${nid}:${extra}:${terms.kind}:${terms.gold}:${terms.province}`)}）</span>` : ''}</button>`;
+        const btn = (a, label, p, extra = '', dis = false) => `<button class="btn small" data-a="${a}" ${extra} ${dis ? 'disabled' : ''}>${label}</button>${p !== undefined ? chanceText(st, me, p, `dip:${a}:${nid}:${extra}:${terms.kind}:${terms.gold}:${terms.province}:${hostageId}`) : ''}`;
         const gold = st.nations[me].gold;
         h += `<div class="sect"><b>贈物</b><div class="row">${btn('gift300', '300金を贈る', undefined, '', gold < 300)}${btn('gift1000', '1000金を贈る', undefined, '', gold < 1000)}</div></div>`;
         if (war) {
@@ -159,7 +159,7 @@ export function diplomacyDialog(app, focus) {
         const dav = discordWith ? discordAvailable(st, me, nid, discordWith) : { ok: false, reason: '' };
         h += `<div class="sect"><b>離間の計</b> <span class="muted">${strat ? `軍師${esc(strat.name)}が二国の間に偽りの噂を流し、仲を裂く（${DISCORD_COST}金・軍師はその季節は動けない）` : '軍師がいないと使えません'}</span>
           ${strat && others.length ? `<div class="row">${esc(n.name)}と<select data-discord>${others.map((o) => `<option value="${o.id}" ${o.id === discordWith ? 'selected' : ''}>${esc(o.name)}（${treatyLabel(st, nid, o.id)}・友好${relation(st, nid, o.id)}）</option>`).join('')}</select>の仲を
-            <button class="btn small" data-a="discord" ${dav.ok ? '' : 'disabled'}>裂く<span class="muted">（${chanceText(st, me, discordChance(st, me, nid, discordWith), `discord:${nid}:${discordWith}`)}）</span></button>
+            <button class="btn small" data-a="discord" ${dav.ok ? '' : 'disabled'}>裂く</button>${chanceText(st, me, discordChance(st, me, nid, discordWith), `discord:${nid}:${discordWith}`)}
             ${dav.ok ? '' : `<span class="muted">${esc(dav.reason)}</span>`}</div>` : ''}</div>`;
         return h;
       };

@@ -29,13 +29,28 @@ export function foresee(st, nid, p, key, bonus = 0) {
   return { lo, hi, by: s.name };
 }
 
-export function chanceText(st, nid, p, key, bonus = 0) {
+// 成功率は数字では示さず、軍師がいれば言葉で見立てを述べる（政治力が低いと見立てが外れることもある）
+export const ADVICE_WORDS = [
+  [0.85, 'まず間違いございません', 'sure'],
+  [0.65, 'うまくいくでしょう', 'good'],
+  [0.4, '五分五分かと', 'even'],
+  [0.2, '難しいでしょう', 'hard'],
+  [0, 'まず無理かと', 'nope'],
+];
+export function adviceWord(st, nid, p, key, bonus = 0) {
   const f = foresee(st, nid, p, key, bonus);
-  if (!f) return '<span class="muted" title="軍師がいないと見通せません">？</span>';
-  const lo = Math.round(f.lo * 100), hi = Math.round(f.hi * 100);
-  const t = hi - lo <= 2 ? `${Math.round(p * 100)}%` : `${lo}〜${hi}%`;
-  return `<span title="軍師${f.by}の見立て">${t}</span>`;
+  if (!f) return null;
+  const est = (f.lo + f.hi) / 2;
+  const [, word, cls] = ADVICE_WORDS.find(([t]) => est >= t);
+  return { word, cls, by: f.by };
 }
+export function chanceText(st, nid, p, key, bonus = 0) {
+  const a = adviceWord(st, nid, p, key, bonus);
+  if (!a) return '';
+  return `<span class="advice-tag ${a.cls}" title="軍師${a.by}の見立て">軍師「${a.word}」</span>`;
+}
+// ボタンなどに添えるとき
+export const adviceSuffix = (html) => (html ? ` ${html}` : '');
 
 // ---- 離間の計 ----
 export const DISCORD_COST = 400;

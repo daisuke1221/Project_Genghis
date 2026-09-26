@@ -14,14 +14,17 @@ describe('見立て', () => {
     const st = game();
     noStrategist(st, 'kiyat');
     expect(foresee(st, 'kiyat', 0.5, 'x')).toBe(null);
-    expect(chanceText(st, 'kiyat', 0.5, 'x')).toContain('？');
+    expect(chanceText(st, 'kiyat', 0.5, 'x')).toBe('');
   });
 
   it('a wise strategist sees precisely, a mediocre one only a range', () => {
     const st = game();
     const s = roleHolder(st, 'kiyat', 'strategist');
     s.pol = 100;
-    expect(chanceText(st, 'kiyat', 0.43, 'x')).toContain('43%');
+    expect(chanceText(st, 'kiyat', 0.43, 'x')).toContain('五分五分');
+    expect(chanceText(st, 'kiyat', 0.95, 'y')).toContain('間違いございません');
+    expect(chanceText(st, 'kiyat', 0.05, 'z')).toContain('無理');
+    expect(chanceText(st, 'kiyat', 0.43, 'x')).not.toMatch(/\d+%/);
     s.pol = 55;
     for (const p of [0.1, 0.43, 0.8]) {
       const f = foresee(st, 'kiyat', p, `k${p}`);
@@ -29,7 +32,6 @@ describe('見立て', () => {
       expect(f.hi).toBeGreaterThanOrEqual(p);
       expect(f.hi - f.lo).toBeGreaterThan(0.15);
     }
-    expect(chanceText(st, 'kiyat', 0.43, 'x')).toContain('〜');
   });
 });
 

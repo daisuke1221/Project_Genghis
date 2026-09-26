@@ -248,3 +248,8 @@ table.list th.clickable { cursor: pointer; }
 .deal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }
 .deal select { margin: 2px 4px 2px 2px; }
 @media (max-width: 700px) { .deal { grid-template-columns: 1fr; } }
+
+/* 軍師の見立て */
+.advice-tag { display: inline-block; font-size: 11px; margin-left: 4px; padding: 0 5px; border-radius: 3px; background: rgba(160,120,220,.18); color: #d8c4ff; white-space: nowrap; cursor: help; }
+.advice-tag.sure, .advice-tag.good { color: #b8f0b0; background: rgba(60,160,60,.18); }
+.advice-tag.hard, .advice-tag.nope { color: #ffb0a0; background: rgba(200,60,40,.18); }

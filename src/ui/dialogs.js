@@ -128,7 +128,7 @@ export function personnelDialog(app, pid) {
             ${st.nations[nid].rulerId === g.id ? '' : `<button class="btn small" data-rw="${g.id}">褒美(100金)</button>`}</td></tr>`).join('')}</table>
           <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が35を下回ると出奔し、不満の大きい太守は謀反を起こします。役職・特技の詳細は上部の「家臣」から。</p>
           <h3>在野の人材</h3>
-          ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>成功率</th><th></th></tr>
+          ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>軍師の見立て</th><th></th></tr>
             ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${chanceText(st, nid, hireChance(st, nid, g), `hire:${g.id}`)}</td>
             <td>${g.hireTried === st.turn ? '<span class="muted">今季は断られた</span>' : `<button class="btn small" data-hire="${g.id}">登用</button>`}</td></tr>`).join('')}</table>` : '<p class="muted">この地方に在野の人材はいません。</p>'}
           <div class="row" style="margin-top:8px"><button class="btn" data-search="1">人材を探す（${SEARCH_COST}金）</button><span class="muted">成功すると在野の人物が見つかります。</span></div>`;
@@ -304,7 +304,7 @@ export function helpDialog() {
       <li>忠誠は毎季、目標値（君主の魅力・相性・位階・役職・特技など）へ近づきます。35未満で出奔し、不満の大きい太守は謀反を起こします。</li>
       <li>敵地を選ぶと「調略」で敵将を引き抜いたり、次の合戦で寝返らせる内応を約束させたりできます。</li></ul>
       <h3>軍師</h3>
-      <ul><li>各種の成功率は、軍師がいないと「？」で見えません。軍師の政治力が高いほど正確に見通せます。</li>
+      <ul><li>成功率は数字では示されません。軍師がいると、各命令の見込みを言葉で助言してくれます（政治力が高いほど見立てが正確）。</li>
       <li>軍師は敵の調略を見破り（内通した家臣は家臣団で詰問・追放）、外交画面で「離間の計」、敵地の画面で「流言」を仕掛けられます（その季節は出陣不可）。</li>
       <li>地図の左上に、軍師の助言（謀反のおそれ・侵攻の気配・攻めどき・内政の不安など）が表示されます。</li></ul>
       <h3>後宮・王族</h3>
@@ -332,7 +332,7 @@ export function captivesDialog(app, gids) {
     width: '640px',
     body: (el) => {
       const render = () => {
-        el.innerHTML = `<p>合戦で次の武将を捕らえた。処遇を決めよ。</p><table class="list"><tr><th>武将</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>登用率</th><th>処遇</th></tr>
+        el.innerHTML = `<p>合戦で次の武将を捕らえた。処遇を決めよ。</p><table class="list"><tr><th>武将</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>軍師の見立て</th><th>処遇</th></tr>
           ${gids.map((id) => {
             const g = st.generals[id];
             const ch = recruitChance(st, nid, g);

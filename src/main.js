@@ -363,7 +363,7 @@ class App {
         <span class="muted">／特産 ${def.specialty} 在庫${fmt(c.goods?.[def.specialty] ?? 0)}荷</span></div>`;
     } else {
       const canSub = p.owner && subvertTargets(st, st.playerNation).some((g) => g.province === pid && g.nation === p.owner);
-      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}${canSub ? '<button class="btn" data-a="subvert" title="敵将を引き抜く・内応させる">調略</button>' : ''}${p.owner && rumorTargets(st, st.playerNation).includes(pid) ? `<button class="btn" data-a="rumor" ${rumorAvailable(st, st.playerNation, pid).ok ? '' : 'disabled'} title="${esc(strategistOf(st, st.playerNation) ? `軍師が城下に流言を放ち、民忠と治安を下げる（${RUMOR_COST}金・軍師はその季節は動けない）` : '軍師がいないと使えません')}">流言${strategistOf(st, st.playerNation) ? `（${chanceText(st, st.playerNation, rumorChance(st, st.playerNation, pid), `rumor:${pid}`)}）` : ''}</button>` : ''}</div>`;
+      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}${canSub ? '<button class="btn" data-a="subvert" title="敵将を引き抜く・内応させる">調略</button>' : ''}${p.owner && rumorTargets(st, st.playerNation).includes(pid) ? `<button class="btn" data-a="rumor" ${rumorAvailable(st, st.playerNation, pid).ok ? '' : 'disabled'} title="${esc(strategistOf(st, st.playerNation) ? `軍師が城下に流言を放ち、民忠と治安を下げる（${RUMOR_COST}金・軍師はその季節は動けない）` : '軍師がいないと使えません')}">流言${chanceText(st, st.playerNation, rumorChance(st, st.playerNation, pid), `rumor:${pid}`) ? `<br>${chanceText(st, st.playerNation, rumorChance(st, st.playerNation, pid), `rumor:${pid}`)}` : ''}</button>` : ''}</div>`;
     }
     const si = siegeInfo(st, pid);
     if (si) {

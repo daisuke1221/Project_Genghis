@@ -9,6 +9,8 @@ import {
   requestBride, requestChance, brideAcceptChance, orphans, becomeConsort, adoptOrphan, isFemaleRuler,
 } from '../game/royal.js';
 import { chanceText } from '../game/strategist.js';
+
+const riskWord = (r) => (r < 0.05 ? '<span class="pos">安全</span>' : r < 0.15 ? 'やや危険' : '<span class="neg">危険</span>');
 import { techsIn, availableTechs, hireTech, hireCost, assignTech, dismissTech } from '../game/tech.js';
 import {
   priceAt, routeQuote, createRoute, cancelRoute, routesFrom, maxRoutes, maxRouteLength, routeCapacity, goodsProduction,
@@ -48,7 +50,6 @@ export function haremDialog(app) {
               <div class="info"><b>${esc(c.name)}</b>（${age(st, c)}歳）<div class="muted">出身：${c.origin ? esc(st.nations[c.origin]?.name ?? '滅亡国') : '国内'}</div>
               <div class="muted">魅力${c.cha}・政治${c.pol}</div>
               <div>寵愛 ${c.affection}${statBar(c.affection, 100, '#e07a9a')}</div>
-              <div class="muted">懐妊の見込み：${Math.round(birthChance(st, c) * 100)}%／季</div>
               <div class="row" style="margin-top:4px">
                 <button class="btn small" data-visit="${c.id}" ${c.visited === st.turn ? 'disabled' : ''}>${c.visited === st.turn ? '寵愛済み' : '寵愛する'}</button>
                 <button class="btn small" data-gift="${c.id}" ${nat.gold >= 100 ? '' : 'disabled'}>贈物（100金）</button></div></div></div>`;
@@ -77,7 +78,7 @@ export function haremDialog(app) {
             .sort((a, b) => (st.nations[nid].relations[b.id] ?? 0) - (st.nations[nid].relations[a.id] ?? 0));
           html += `<p class="muted">他国に縁談を申し込み、姫を妃に迎えます。成立すれば婚姻同盟が結ばれます（友好度が高いほど成功しやすい）。</p>`;
           if (female) html += '<p class="neg">女王のため、妃を迎えることはできません。</p>';
-          html += `<table class="list"><tr><th>勢力</th><th>姫</th><th>友好</th><th>成功率</th><th></th></tr>
+          html += `<table class="list"><tr><th>勢力</th><th>姫</th><th>友好</th><th>軍師の見立て</th><th></th></tr>
             ${list.map((n) => {
               const p = marriageable(st, n.id).sort((a, b) => b.cha - a.cha)[0];
               const tried = st.nations[nid].brideAsked?.[n.id] === st.turn;
@@ -132,7 +133,7 @@ function wedForeign(app, pid) {
     title: `${p.name}を他国へ嫁がせる`,
     body: (el, api) => {
       el.innerHTML = `<p class="muted">相手の君主の妃となり、婚姻同盟が結ばれます。姫は二度と戻りません。</p>
-        <table class="list"><tr><th>勢力</th><th>君主</th><th>友好</th><th>受諾率</th><th></th></tr>
+        <table class="list"><tr><th>勢力</th><th>君主</th><th>友好</th><th>軍師の見立て</th><th></th></tr>
         ${list.map((n) => `<tr><td><span class="swatch" style="background:${n.color}"></span>${n.name}</td><td>${esc(ruler(st, n.id)?.name ?? '')}（${age(st, ruler(st, n.id))}歳）</td>
           <td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${chanceText(st, nid, brideAcceptChance(st, nid, n.id), `wed:${n.id}:${p.id}`)}</td><td><button class="btn small" data-n="${n.id}">申し込む</button></td></tr>`).join('')}</table>`;
       el.onclick = (e) => {
@@ -241,7 +242,7 @@ export function tradeDialog(app, pid) {
               const last = r.last ? (r.last.raided ? '<span class="neg">略奪</span>' : `<span class="pos">+${fmt(r.last.profit)}</span>`) : '―';
               return `<tr><td>${PROV_DEF[r.to].city}（${esc(st.nations[st.provinces[r.to].owner]?.name ?? '')}）</td>
                 <td>${q.ok ? `${q.outGood}→${q.outSell}金` : '<span class="neg">×</span>'}</td><td>${q.ok && q.retQty ? `${q.retGood} ${q.retBuy}→${q.retSell}` : '―'}</td>
-                <td>${q.ok ? fmt(q.profit) : esc(q.reason)}</td><td>${q.ok ? `${Math.round(q.risk * 100)}%` : ''}</td><td>${last}</td>
+                <td>${q.ok ? fmt(q.profit) : esc(q.reason)}</td><td>${q.ok ? riskWord(q.risk) : ''}</td><td>${last}</td>
                 <td><button class="btn small" data-cancel="${r.id}">廃止</button></td></tr>`;
             }).join('') || '<tr><td colspan="7" class="muted">なし</td></tr>'}</table>`;
           if (mr <= 0) html += '<p class="neg">交易路を開くには、この都市の箱庭に「隊商宿」を建ててください。</p>';
@@ -251,7 +252,7 @@ export function tradeDialog(app, pid) {
             html += `<h3>新しい交易路の候補</h3><table class="list"><tr><th>行き先</th><th>距離</th><th>往路（${spec}）</th><th>復路</th><th>関税</th><th>見込み利益/季</th><th>危険</th><th></th></tr>
               ${cands.map(({ p, q }) => `<tr><td><span class="swatch" style="background:${st.nations[st.provinces[p.id].owner]?.color}"></span>${p.city}</td><td>${q.dist}</td>
                 <td>${q.qty}荷×${q.outSell}金</td><td>${q.retQty ? `${q.retGood} ${q.retBuy}→${q.retSell}` : '―'}</td><td>${q.tariff || '―'}</td>
-                <td><b class="${q.profit > 0 ? 'pos' : 'neg'}">${fmt(q.profit)}</b></td><td class="${q.risk > 0.15 ? 'neg' : ''}">${Math.round(q.risk * 100)}%</td>
+                <td><b class="${q.profit > 0 ? 'pos' : 'neg'}">${fmt(q.profit)}</b></td><td>${riskWord(q.risk)}</td>
                 <td><button class="btn small" data-open="${p.id}" ${routes.length >= mr ? 'disabled' : ''}>開設</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">交易できる相手がいません（友好度0以上の国か自領が必要）</td></tr>'}</table>`;
           }
         } else {
