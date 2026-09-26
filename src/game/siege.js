@@ -97,6 +97,8 @@ export function wallDamage(st, pid) {
   const gens = besiegers(st, pid);
   let dmg = 0;
   for (const g of gens) dmg += g.unit.soldiers * (g.unit.type === 'siege' ? 0.08 : 0.01) * (0.8 + g.war / 250);
+  const att = siegeAt(st, pid)?.att;
+  if (att && st.nations[att]?.innov?.trebuchet) dmg *= 1.5;
   return Math.round(dmg);
 }
 

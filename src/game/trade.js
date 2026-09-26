@@ -1,9 +1,11 @@
 // 特産品交易：各都市の特産品の生産・備蓄、距離と季節で変わる相場、隊商による交易路
 import { GOODS, PROVINCES } from './data.js';
+import { learnFrom } from './research.js';
 import { hasPact } from './statecraft.js';
 import { NEIGHBORS } from './geo.js';
 import { rrange, chance } from './rng.js';
-import { techBonus } from './tech.js';
+import { techBonus, genTech, PROV_CULTURE } from './tech.js';
+import { TECH_TYPES } from './data.js';
 
 const PDEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const GOOD_NAMES = Object.keys(GOODS);
@@ -108,7 +110,7 @@ export function routeQuote(st, nid, from, to, qtyOverride) {
   const foreign = st.provinces[to].owner !== nid;
   const pact = foreign && hasPact(st, nid, st.provinces[to].owner);
   const tariff = foreign && !pact ? Math.round(outRevenue * 0.1) : 0;
-  const bonus = 1 + techBonus(st, from).trade + (pact ? 0.1 : 0);
+  const bonus = 1 + techBonus(st, from).trade + (pact ? 0.1 : 0) + (st.nations[nid]?.innov?.compass ? 0.1 : 0);
   const cost = ROUTE_UPKEEP + 3 * dist;
   const profit = Math.round((outRevenue + retProfit) * bonus - tariff - cost);
   return {
@@ -184,6 +186,12 @@ export function tradeTick(st, onLog) {
     r.last = { raided: false, profit: q.profit, qty, turn: st.turn };
     const owner = st.provinces[r.to].owner;
     if (q.foreign) {
+      // 交易を通じて技術や職人が伝わることがある
+      if (chance(st, 0.04)) learnFrom(st, r.nation, owner, '交易を通じて');
+      if (chance(st, 0.02)) {
+        const t = genTech(st, r.from, PROV_CULTURE[r.to]);
+        if (mine) onLog?.(`${toName}から来た職人${t.name}（${TECH_TYPES[t.type].name}）が${fromName}に住みついた（招聘できる）。`, true);
+      }
       st.nations[owner].gold += q.tariff;
       const v = Math.min(100, (nat.relations[owner] ?? 0) + 1);
       nat.relations[owner] = v; st.nations[owner].relations[r.nation] = v;

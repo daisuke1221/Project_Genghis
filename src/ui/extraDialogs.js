@@ -11,7 +11,8 @@ import {
 import { chanceText } from '../game/strategist.js';
 
 const riskWord = (r) => (r < 0.05 ? '<span class="pos">安全</span>' : r < 0.15 ? 'やや危険' : '<span class="neg">危険</span>');
-import { techsIn, availableTechs, hireTech, hireCost, assignTech, dismissTech } from '../game/tech.js';
+import { techsIn, availableTechs, hireTech, hireCost, assignTech, dismissTech, TECH_TRAITS, techMul, salaryOf, hireTechChance, poachTargets, poachChance, poachCost, poachTech, TECH_MAX_LEVEL } from '../game/tech.js';
+import { INNOVATIONS, INNOVATION_ORDER, knows, available as innovAvailable, innovCost, researchRate, setResearch } from '../game/research.js';
 import {
   priceAt, routeQuote, createRoute, cancelRoute, routesFrom, maxRoutes, maxRouteLength, routeCapacity, goodsProduction,
   sellGoods, GOOD_NAMES, DIST,
@@ -235,13 +236,15 @@ export function techDialog(app, pid) {
     width: '860px',
     body: (el) => {
       let filter = 'all';
-      const row = (t, action) => `<tr><td><span class="ic-s">${TECH_TYPES[t.type].glyph}</span>${esc(t.name)}</td><td>${TECH_TYPES[t.type].name}</td><td>${'★'.repeat(t.level)}</td>
-        <td>${CULTURES[t.culture]?.name ?? ''}</td><td class="muted" style="font-size:12px">${TECH_TYPES[t.type].desc}</td><td>${action}</td></tr>`;
+      const row = (t, action) => `<tr><td><span class="ic-s">${TECH_TYPES[t.type].glyph}</span>${esc(t.name)}${t.trait ? ` <span class="trait" title="${esc(TECH_TRAITS[t.trait].desc)}">${TECH_TRAITS[t.trait].name}</span>` : ''}</td><td>${TECH_TYPES[t.type].name}</td>
+        <td title="経験 ${Math.round(t.exp ?? 0)}/${100 * t.level}">${'★'.repeat(t.level)}${t.level < TECH_MAX_LEVEL ? `<span class="muted">${'☆'.repeat(TECH_MAX_LEVEL - t.level)}</span>` : ''}</td>
+        <td>${CULTURES[t.culture]?.name ?? ''}</td><td class="muted" style="font-size:12px">${TECH_TYPES[t.type].desc}${t.city && t.nation === nid ? `<br><span class="pos">実効 ×${techMul(st, t, t.city).toFixed(2)}</span>` : ''}</td><td>${action}</td></tr>`;
       const render = () => {
         const here = techsIn(st, pid);
         const mine = Object.values(st.techs).filter((t) => t.nation === nid && t.city !== pid);
         const avail = availableTechs(st, nid).filter((t) => filter === 'all' || t.type === filter).sort((a, b) => b.level - a.level);
-        el.innerHTML = `<p class="muted">各地の専門家を招聘して都市に配置します（1都市${TECH_SLOTS}人まで）。給金は毎季 ${TECH_SALARY}金×Lv。招聘できるのは、自領か友好国（友好度20以上または条約国）にいる技術者です。都市を奪われると技術者も奪われます。</p>
+        const poach = poachTargets(st, nid).sort((a, b) => b.level - a.level).slice(0, 12);
+        el.innerHTML = `<p class="muted">各地の専門家を招聘して都市に配置します（1都市${TECH_SLOTS}人まで）。給金は毎季 ${TECH_SALARY}金×Lv。招聘できるのは、自領か友好国（友好度20以上または条約国）にいる技術者で、他国にいる者は名声と友好度しだいで断ることもあります。仕えている技術者は毎年腕を上げ（最大Lv${TECH_MAX_LEVEL}）、太守の政治力も伸ばします。政治80以上の太守や、相性のよい特技の太守のもとでは効果が上がります。</p>
           <h3>この都市の技術者（${here.length}/${TECH_SLOTS}）</h3>
           <table class="list"><tr><th>名前</th><th>職</th><th>Lv</th><th>出身</th><th>効果</th><th></th></tr>
           ${here.map((t) => row(t, `<button class="btn small" data-dismiss="${t.id}">解任</button>`)).join('') || '<tr><td colspan="6" class="muted">いません</td></tr>'}</table>
@@ -251,15 +254,19 @@ export function techDialog(app, pid) {
           <div class="row" style="margin-bottom:6px"><select data-filter><option value="all">すべての職</option>${Object.entries(TECH_TYPES).map(([k, v]) => `<option value="${k}" ${filter === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select>
             <span class="muted">金 ${fmt(st.nations[nid].gold)}</span></div>
           <table class="list"><tr><th>名前</th><th>職</th><th>Lv</th><th>出身</th><th>効果</th><th>所在・費用</th></tr>
-          ${avail.map((t) => row(t, `<span class="muted">${PROV_DEF[t.home].city}</span> <button class="btn small" data-hire="${t.id}" ${here.length >= TECH_SLOTS || st.nations[nid].gold < hireCost(t) ? 'disabled' : ''}>招聘 ${hireCost(t)}金</button>`)).join('') || '<tr><td colspan="6" class="muted">招聘できる技術者がいません。友好国を増やすか、領土を広げましょう。</td></tr>'}</table>`;
+          ${avail.map((t) => row(t, `<span class="muted">${PROV_DEF[t.home].city}</span> <button class="btn small" data-hire="${t.id}" ${here.length >= TECH_SLOTS || st.nations[nid].gold < hireCost(t) || t.refused?.[nid] === st.turn ? 'disabled' : ''}>招聘 ${hireCost(t)}金</button>${chanceText(st, nid, hireTechChance(st, nid, t), `th:${t.id}`)}<br><span class="muted small">給金${salaryOf(t)}金/季</span>`)).join('') || '<tr><td colspan="6" class="muted">招聘できる技術者がいません。友好国を増やすか、領土を広げましょう。</td></tr>'}</table>
+          ${poach.length ? `<h3>他国に仕える技術者（引き抜き）</h3><p class="muted">高い報酬（招聘費の2倍）で誘います。名声が相手国より高いほど、強欲な者ほど応じやすく、長く仕えている者ほど義理堅い。成否にかかわらず相手国との関係は悪化します。</p>
+            <table class="list"><tr><th>名前</th><th>職</th><th>Lv</th><th>出身</th><th>効果</th><th>仕える国・費用</th></tr>
+            ${poach.map((t) => row(t, `<span class="muted">${esc(st.nations[t.nation].name)}・${PROV_DEF[t.city ?? t.home]?.city ?? ''}</span> <button class="btn small" data-poach="${t.id}" ${here.length >= TECH_SLOTS || st.nations[nid].gold < poachCost(t) || t.refused?.[nid] === st.turn ? 'disabled' : ''}>引き抜く ${poachCost(t)}金</button>${chanceText(st, nid, poachChance(st, nid, t), `tp:${t.id}`)}`)).join('')}</table>` : ''}`;
       };
       el.onchange = (e) => { if (e.target.dataset.filter !== undefined) { filter = e.target.value; render(); } };
       el.onclick = (e) => {
         const d = e.target.dataset;
-        if (d.hire) { const r = hireTech(st, nid, d.hire, pid); if (r.ok) { audio.sfx('coin'); toast(`${st.techs[d.hire].name}を招聘した`); } else toast(r.reason); }
+        if (d.hire) { const r = hireTech(st, nid, d.hire, pid); if (!r.ok) toast(r.reason); else { if (r.success) audio.sfx('coin'); toast(r.text); } }
+        if (d.poach) { const r = poachTech(st, nid, d.poach, pid); if (!r.ok) toast(r.reason); else { if (r.success) audio.sfx('coin'); toast(r.text); } app.renderTopbar(); }
         if (d.dismiss) { dismissTech(st, d.dismiss); }
         if (d.move) { const r = assignTech(st, d.move, pid); if (!r.ok) toast(r.reason); }
-        if (d.hire || d.dismiss || d.move) { render(); app.refresh(); }
+        if (d.hire || d.dismiss || d.move || d.poach) { render(); app.refresh(); }
       };
       render();
     },
@@ -349,3 +356,41 @@ export function tradeDialog(app, pid) {
   });
 }
 
+
+// ================= 研究（技術革新） =================
+export function researchDialog(app) {
+  const st = app.st, nid = st.playerNation;
+  return modal({
+    title: '研究・技術革新',
+    width: '820px',
+    body: (el) => {
+      const render = () => {
+        const n = st.nations[nid];
+        const rate = researchRate(st, nid);
+        const cur = n.research?.key;
+        const avail = innovAvailable(st, nid);
+        el.innerHTML = `<p class="muted">仕えている技術者の知恵を集めて、国として新しい技術を獲得します。研究点は毎季、技術者のLvの合計（学者と発明家は1.5倍）＋1。発祥の文化圏の国や、すでに隣国が持っている技術は安く習得できます。攻め取った都市や交易相手から技術を学び取ることもあります。</p>
+          <div class="sect"><b>研究中</b>：${cur ? `${INNOVATIONS[cur].name}（${Math.floor(n.research.points)}/${innovCost(st, nid, cur)}） ${statBar(n.research.points, innovCost(st, nid, cur), '#7aa0d8')}` : '<span class="neg">なし（下から選ぶ）</span>'}
+            <span class="muted">毎季 +${rate}</span></div>
+          <table class="list"><tr><th>技術</th><th>効果</th><th>必要研究点</th><th></th></tr>
+          ${INNOVATION_ORDER.map((k) => {
+            const I = INNOVATIONS[k];
+            const known = knows(st, nid, k);
+            const can = avail.includes(k);
+            return `<tr class="${cur === k ? 'sel' : ''}"><td><b>${I.name}</b>${I.origin ? `<br><span class="muted small">発祥：${I.origin.map((c) => CULTURES[c].name).join('・')}</span>` : ''}</td>
+              <td class="small">${I.desc}${I.pre ? `<br><span class="muted">前提：${INNOVATIONS[I.pre].name}</span>` : ''}</td>
+              <td>${known ? '<span class="pos">獲得済み</span>' : innovCost(st, nid, k)}</td>
+              <td>${known ? '' : can ? `<button class="btn small ${cur === k ? 'active' : ''}" data-research="${k}">${cur === k ? '研究中' : '研究する'}</button>` : '<span class="muted">前提が必要</span>'}</td></tr>`;
+          }).join('')}</table>`;
+      };
+      el.onclick = (e) => {
+        const k = e.target.closest('[data-research]')?.dataset.research;
+        if (!k) return;
+        const r = setResearch(st, nid, k);
+        if (!r.ok) toast(r.reason); else audio.sfx('click');
+        render();
+      };
+      render();
+    },
+  });
+}

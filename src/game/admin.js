@@ -3,6 +3,7 @@ import { PROVINCES, NATIONS, CULTURES } from './data.js';
 import { chance, rnd, pick } from './rng.js';
 import { PROV_CULTURE } from './tech.js';
 import { hasTrait, chancellorBonus, gainExp, addMerit } from './personnel.js';
+import { knows } from './research.js';
 
 export const TAX_LEVELS = [
   { name: '軽税', mul: 0.6, loyalty: 10, order: 4, grow: 1.3, desc: '税収60%・民忠↑・人口が増えやすい' },
@@ -93,6 +94,7 @@ export function adminMods(st, pid) {
     order.push(gov ? ['太守の武力', Math.round((gov.war - 50) / 5)] : ['太守不在', -5]);
     if (gov && hasTrait(gov, 'benevolent')) loyalty.push(['太守の仁政', 5]);
     if (gov?.fief === pid && gov.family) loyalty.push(['王族の封地', 6]);
+    if (knows(st, nid, 'printing')) loyalty.push(['印刷術', 2]);
     order.push(['民忠', Math.round((c.loyalty - 50) / 4)]);
     if (T.order) order.push([T.name, T.order]);
     if (st.sieges?.[pid]) order.push(['包囲', -15]);
@@ -168,7 +170,7 @@ export function commandEffect(st, pid, kind, g) {
   switch (kind) {
     case 'alms': return { loyalty: Math.round(4 + s / 12) };
     case 'patrol': return { order: Math.round(5 + s / 8 + (troops ? 5 : 0)) };
-    case 'irrigate': return { irrigation: Math.round(6 + s / 8) };
+    case 'irrigate': return { irrigation: Math.round((6 + s / 8) * (knows(st, st.provinces[pid].owner, 'qanat') ? 1.5 : 1)) };
     case 'commerce': return { commerce: Math.round(6 + s / 8) };
     case 'patronize': return { loyalty: Math.round(2 + s / 25) };
     case 'convert': return { chance: Math.min(0.8, 0.15 + s / 350 + (st.provinces[pid].city.loyalty - 50) / 250), loyalty: -8 };

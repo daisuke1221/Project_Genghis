@@ -27,7 +27,8 @@ export function marchRange(st, gids) {
   const gens = gids.map((id) => st.generals[id]).filter(Boolean);
   const armed = gens.filter((g) => g.unit?.soldiers > 0);
   if (!armed.length) return 2;
-  return armed.every((g) => isMountedType(g.unit.type)) ? 3 : 2;
+  const yam = st.nations[gens[0]?.nation]?.innov?.yam ? 1 : 0;
+  return (armed.every((g) => isMountedType(g.unit.type)) ? 3 : 2) + yam;
 }
 function passable(st, nid, pid) {
   const p = st.provinces[pid];
@@ -114,7 +115,7 @@ export function supplyTick(st) {
       if (!cut) continue;
       for (const g of generalsIn(st, p.id, n.id)) {
         if (!g.unit?.soldiers) continue;
-        g.unit.soldiers = Math.round(g.unit.soldiers * 0.95 / 10) * 10;
+        g.unit.soldiers = Math.round(g.unit.soldiers * (n.innov?.yam ? 0.975 : 0.95) / 10) * 10;
         g.unit.training = Math.max(10, g.unit.training - 2);
       }
     }

@@ -261,3 +261,4 @@ table.list th.clickable { cursor: pointer; }
 .fm span { display: block; }
 .fm.sel { background: rgba(212,169,74,.18); border-color: var(--gold); }
 .card select { max-width: 100%; }
+.tech-tag { font-size: 10px; color: #f2e6c4; background: rgba(20,16,10,.7); padding: 0 4px; border-radius: 3px; white-space: nowrap; pointer-events: none; }
