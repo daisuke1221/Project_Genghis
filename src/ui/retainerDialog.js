@@ -8,6 +8,7 @@ import {
   roleOf, roleHolder, appoint, rebelRisk, subvertChance, subvertAgents, subvert, SUBVERT_COST, hasTrait, interrogate, interrogateChance, banish,
 } from '../game/personnel.js';
 import { chanceText } from '../game/strategist.js';
+import { fame, fameLabel, stipendTotal } from '../game/talent.js';
 import { confirmBox } from './ui.js';
 
 export const traitChips = (g) => (ensurePersonnel(g).traits.map((t) => `<span class="trait ${t === 'ambitious' ? 'bad' : t === 'loyal' ? 'good' : ''}" title="${esc(TRAITS[t].desc)}">${TRAITS[t].name}</span>`).join('') || '<span class="muted">―</span>');
@@ -40,7 +41,7 @@ export function retainerDialog(app) {
         let html = `<div class="tabs"><button class="btn small ${tab === 'list' ? 'active' : ''}" data-tab="list">家臣一覧</button>
           <button class="btn small ${tab === 'roles' ? 'active' : ''}" data-tab="roles">役職</button>
           <button class="btn small ${tab === 'help' ? 'active' : ''}" data-tab="help">特技・位階・忠誠</button>
-          <span class="muted" style="margin-left:auto">金 ${fmt(nat.gold)}</span></div>`;
+          <span class="muted" style="margin-left:auto">名声 ${fame(st, nid)}（${fameLabel(fame(st, nid))}）・俸給 ${fmt(stipendTotal(st, nid))}金/季・金 ${fmt(nat.gold)}</span></div>`;
         if (tab === 'list') {
           const keys = { rank: (g) => -(g.rank * 1000 + g.merit), loyalty: (g) => g.loyalty, war: (g) => -g.war, lead: (g) => -g.lead, pol: (g) => -g.pol, cha: (g) => -g.cha };
           const gens = nationGenerals(st, nid).sort((a, b) => keys[sort](a) - keys[sort](b));

@@ -11,6 +11,7 @@ import { transferCityTechs } from './tech.js';
 import { orphanNation } from './royal.js';
 import { adminOnConquest } from './admin.js';
 import { battleAftermath, hasTrait } from './personnel.js';
+import { hireChanceWith, tryHireWith } from './talent.js';
 import { currentHeir, successionDispute, marriageClaimant } from './court.js';
 
 // ---- 徴兵 ----
@@ -341,7 +342,7 @@ export function destroyNation(st, nid, byNid) {
   if (!nat.alive) return;
   nat.alive = false;
   for (const g of Object.values(st.generals)) {
-    if (g.nation === nid) { g.nation = null; g.unit = null; }
+    if (g.nation === nid) { g.formerNation = nid; g.nation = null; g.unit = null; }
   }
   for (const p of Object.values(st.provinces)) if (p.owner === nid) { p.owner = null; p.governorId = null; transferCityTechs(st, p.id, null); }
   orphanNation(st, nid);
@@ -350,20 +351,11 @@ export function destroyNation(st, nid, byNid) {
 }
 
 // ---- 人事 ----
-export function hireChance(st, nid, g) {
-  const r = ruler(st, nid);
-  return Math.max(0.1, Math.min(0.9, 0.4 + ((r?.cha ?? 50) - 50) / 100 + (g.cha < 50 ? 0.1 : 0) + (r && hasTrait(r, 'eloquent') ? 0.15 : 0)));
+export function hireChance(st, nid, g, opts = {}) {
+  return hireChanceWith(st, nid, g, opts);
 }
-export function tryHire(st, nid, gid) {
-  const g = st.generals[gid];
-  if (g.nation || !isActive(st, g)) return false;
-  g.hireTried = st.turn;
-  if (chance(st, hireChance(st, nid, g))) {
-    g.nation = nid;
-    g.loyalty = 60 + Math.round(rnd(st) * 20);
-    return true;
-  }
-  return false;
+export function tryHire(st, nid, gid, opts = {}) {
+  return !!tryHireWith(st, nid, gid, opts).success;
 }
 
 export const SEARCH_COST = 200;

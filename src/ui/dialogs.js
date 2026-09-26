@@ -14,6 +14,8 @@ import { traitChips, rankLabel, loyaltyCell, compatCell } from './retainerDialog
 import { canPromote, promoteCost, promote, roleOf, ROLES } from '../game/personnel.js';
 import { chanceText, strategistOf } from '../game/strategist.js';
 import { unitTypesFor, mercOffers, hireMerc, MERC_TERM, fatigueOf } from '../game/warfare.js';
+import { fame, fameLabel, hireChanceWith, tryHireWith, stipendOf } from '../game/talent.js';
+import { TRAITS } from '../game/personnel.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -120,6 +122,7 @@ export function sortieDialog(app, pid) {
 
 // ---------- 人事 ----------
 export function personnelDialog(app, pid) {
+  const hireOpts = { gold: 0, rank: false };
   const st = app.st, nid = st.playerNation;
   return modal({
     title: `${PROV_DEF[pid].city}の人事`,
@@ -137,11 +140,22 @@ export function personnelDialog(app, pid) {
             ${canPromote(g) ? `<button class="btn small primary" data-promote="${g.id}">昇進(${promoteCost(g)}金)</button>` : ''}
             ${st.nations[nid].rulerId === g.id ? '' : `<button class="btn small" data-rw="${g.id}">褒美(100金)</button>`}</td></tr>`).join('')}</table>
           <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が35を下回ると出奔し、不満の大きい太守は謀反を起こします。役職・特技の詳細は上部の「家臣」から。</p>
-          <h3>在野の人材</h3>
-          ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>軍師の見立て</th><th></th></tr>
-            ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${chanceText(st, nid, hireChance(st, nid, g), `hire:${g.id}`)}</td>
-            <td>${g.hireTried === st.turn ? '<span class="muted">今季は断られた</span>' : `<button class="btn small" data-hire="${g.id}">登用</button>`}</td></tr>`).join('')}</table>` : '<p class="muted">この地方に在野の人材はいません。</p>'}
+          <h3>在野の人材 <span class="muted small">貴国の名声：${fame(st, nid)}（${fameLabel(fame(st, nid))}）</span></h3>
+          ${ronin.length ? `<div class="row" style="margin-bottom:4px"><span class="muted">口説き方：</span>
+              <select data-hgold>${[0, 100, 300, 500].map((v) => `<option value="${v}" ${hireOpts.gold === v ? 'selected' : ''}>${v ? `贈物${v}金` : '贈物なし'}</option>`).join('')}</select>
+              <label><input type="checkbox" data-hrank ${hireOpts.rank ? 'checked' : ''}> 位階を約束する（一つ上の位階で迎える）</label></div>
+            <table class="list"><tr><th>人物</th><th>年</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>特技</th><th>軍師の見立て</th><th></th></tr>
+            ${ronin.map((g) => `<tr><td>${esc(g.name)}${g.named ? ' <span class="role-tag">名士</span>' : ''}${g.recommendedTo === nid ? ` <span class="pos small" title="${esc(st.generals[g.recommendedBy]?.name ?? '')}の推挙">推挙</span>` : ''}${g.courted?.[nid] ? ` <span class="muted small">${g.courted[nid]}度訪問</span>` : ''}</td>
+            <td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${(g.traits ?? []).map((t) => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].name}</span>`).join('') || '―'}</td>
+            <td>${chanceText(st, nid, hireChanceWith(st, nid, g, hireOpts), `hire:${g.id}:${hireOpts.gold}:${hireOpts.rank}`)}</td>
+            <td>${g.hireTried === st.turn && g.hireBy === nid ? '<span class="muted">今季は断られた</span>' : `<button class="btn small" data-hire="${g.id}">登用</button>`}</td></tr>`).join('')}</table>
+            <p class="muted">贈物や位階の約束で応じやすくなり、断られても季節を改めて通い続ければ（三顧の礼）心を動かせます。名声の高い国ほど人が集まり、在野の人物は各地を渡り歩いて仕官を願い出てくることもあります。家臣には毎季俸給（5金＋位階×4金）がかかります。</p>` : '<p class="muted">この地方に在野の人材はいません。</p>'}
           <div class="row" style="margin-top:8px"><button class="btn" data-search="1">人材を探す（${SEARCH_COST}金）</button><span class="muted">成功すると在野の人物が見つかります。</span></div>`;
+      };
+      el.onchange = (e) => {
+        if (e.target.dataset.hgold !== undefined) hireOpts.gold = Number(e.target.value);
+        if (e.target.dataset.hrank !== undefined) hireOpts.rank = e.target.checked;
+        render();
       };
       el.onclick = (e) => {
         const t = e.target;
@@ -150,8 +164,10 @@ export function personnelDialog(app, pid) {
         if (t.dataset.rw) { if (reward(st, t.dataset.rw, 100)) { audio.sfx('coin'); toast('忠誠が上がった'); } else toast('金が足りません'); render(); app.renderTopbar(); }
         if (t.dataset.hire) {
           const g = st.generals[t.dataset.hire];
-          if (tryHire(st, nid, g.id)) { g.province = pid; toast(`${g.name}が配下に加わった！`); audio.sfx('coin'); } else toast(`${g.name}に断られた…`);
-          render();
+          const r = tryHireWith(st, nid, g.id, hireOpts);
+          if (!r.ok) toast(r.reason);
+          else { if (r.success) { g.province = pid; audio.sfx('coin'); } toast(r.text); }
+          render(); app.renderTopbar();
         }
         if (t.dataset.search) {
           const r = searchTalent(st, nid, pid);
@@ -313,6 +329,9 @@ export function helpDialog() {
       <li>合戦・内政・調略で功績が貯まり、十人長→百人長→千人長→万人長と昇進させられます（兵の上限+5%/位階）。功績が届いたのに昇進させないと不満が出ます。</li>
       <li>忠誠は毎季、目標値（君主の魅力・相性・位階・役職・特技など）へ近づきます。35未満で出奔し、不満の大きい太守は謀反を起こします。</li>
       <li>敵地を選ぶと「調略」で敵将を引き抜いたり、次の合戦で寝返らせる内応を約束させたりできます。</li></ul>
+      <h3>人材と登用</h3>
+      <ul><li>在野の人物は贈物や位階の約束で口説け、断られても通い続ければ心を動かせます（三顧の礼）。名声の高い国ほど人が集まり、仕官を願い出てくる者や、家臣が推挙する者もいます。</li>
+      <li>史実の人物（チンカイ、耶律楚材、史天沢など）も時代が来ると在野に現れます。家臣には毎季俸給がかかります。</li></ul>
       <h3>軍師</h3>
       <ul><li>成功率は数字では示されません。軍師がいると、各命令の見込みを言葉で助言してくれます（政治力が高いほど見立てが正確）。</li>
       <li>軍師は敵の調略を見破り（内通した家臣は家臣団で詰問・追放）、外交画面で「離間の計」、敵地の画面で「流言」を仕掛けられます（その季節は出陣不可）。</li>
@@ -395,6 +414,13 @@ export async function proposalDialog(app, pr) {
     title = '臣従の要求';
     text = '<p>「我が主君に臣従し、朝貢せよ。さもなくば、我が軍勢が貴国を踏みつぶすであろう」</p><p class="muted">受け入れると従属国となり、毎季収入の20%を朝貢します。拒めば戦争になります。</p>';
     buttons = [{ label: '拒絶する（開戦）', value: false }, { label: '臣従する', value: true, primary: true }];
+  } else if (pr.kind === 'petition') {
+    const g = st.generals[pr.gid];
+    title = '仕官の申し出';
+    text = `<p>在野の<b>${esc(g.name)}</b>（${st.year - g.birth}歳）が、貴国の名声を聞き仕官を願い出てきた。</p>
+      <p>武力${g.war}・統率${g.lead}・政治${g.pol}・魅力${g.cha}${(g.traits ?? []).length ? `・特技：${g.traits.map((t) => TRAITS[t].name).join('、')}` : ''}</p>
+      <p class="muted">召し抱えると毎季の俸給がかかります。</p>`;
+    buttons = [{ label: '断る', value: false }, { label: '召し抱える', value: true, primary: true }];
   } else if (pr.kind === 'gift') {
     title = '贈物の使者';
     text = `<p>「我が主君より、よしみの印として${pr.gold}金をお納めくだされ」</p><p class="muted">金と友好度が増えました。</p>`;
@@ -416,7 +442,7 @@ export async function proposalDialog(app, pr) {
   } else text = `<p>「我が国と${kind}を結ばれたし」</p>`;
   const ok = await modal({
     title,
-    body: `<p><span class="swatch" style="background:${n.color}"></span><b>${n.name}</b>の${esc(ruler(st, pr.from)?.name ?? '')}から使者が来た。</p>${text}`,
+    body: pr.kind === 'petition' ? text : `<p><span class="swatch" style="background:${n.color}"></span><b>${n.name}</b>の${esc(ruler(st, pr.from)?.name ?? '')}から使者が来た。</p>${text}`,
     buttons,
     closeValue: false,
   });

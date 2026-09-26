@@ -12,6 +12,7 @@ import { tradeTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
 import { courtTick, educationYear } from './court.js';
+import { stipendTotal, roninTick, acceptPetition, recommendations, namedRoninTick } from './talent.js';
 import { runEvents } from './events.js';
 import { diplomacyTick } from './diplomacy.js';
 import { siegeTick, flushCaptives } from './siege.js';
@@ -31,6 +32,11 @@ export async function endTurn(st, hooks = {}) {
   }
   if (st.nations[player].alive) delegateDevelop(st, player);
   seasonTick(st);
+  // 在野の人物の放浪と仕官の申し出
+  for (const pr of roninTick(st)) {
+    const ok = hooks.proposal ? await hooks.proposal(pr) : false;
+    if (ok) acceptPetition(st, pr.gid);
+  }
   await flushCaptives(st, hooks);
   advanceTime(st);
   checkGameOver(st);
@@ -86,7 +92,7 @@ export function seasonTick(st) {
     const gens = nationGenerals(st, nat.id);
     const soldiers = gens.reduce((s, g) => s + (g.unit?.soldiers ?? 0), 0);
     nat.food -= Math.round(soldiers * 0.1);
-    nat.gold -= Math.round(soldiers * 0.04);
+    nat.gold -= Math.round(soldiers * 0.04) + stipendTotal(st, nat.id); // 兵の維持費と武将の俸給
     if (nat.food < 0) {
       for (const g of gens) if (g.unit) g.unit.soldiers = Math.round(g.unit.soldiers * 0.9);
       if (nat.id === player) log(st, '兵糧が尽き、兵の一部が逃亡した！', true);
@@ -160,6 +166,7 @@ function yearlyEvents(st) {
     // 忠誠の低い武将の出奔
     if (g.nation && st.nations[g.nation]?.rulerId !== g.id && !g.family && !hasTrait(g, 'loyal') && g.loyalty < 35 && chance(st, 0.25)) {
       if (g.nation === player) log(st, `${g.name}が出奔した！`, true);
+      g.formerNation = g.nation;
       const p = st.provinces[g.province];
       g.nation = null; g.unit = null;
       if (p?.governorId === g.id) assignBestGovernor(st, p.id);
@@ -167,6 +174,8 @@ function yearlyEvents(st) {
   }
   personnelYear(st, (t, imp) => log(st, t, imp));
   educationYear(st);
+  recommendations(st);
+  namedRoninTick(st);
   // 在野武将の補充（少しずつ新しい人材が現れる）
   const ronin = Object.values(st.generals).filter((g) => g.alive && !g.nation).length;
   for (let i = ronin; i < 16; i += 1) {

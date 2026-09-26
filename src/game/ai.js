@@ -3,7 +3,7 @@ import { UNIT_TYPES, CULTURES } from './data.js';
 import { chance, shuffle, rnd } from './rng.js';
 import { NEIGHBORS } from './geo.js';
 import {
-  NATION_DEF, nationProvinces, generalsIn, roninIn, unitCap, unitPower, stackPower,
+  NATION_DEF, nationProvinces, nationGenerals, generalsIn, roninIn, unitCap, unitPower, stackPower,
   assignBestGovernor, canAttack, relation, treaty, log,
 } from './state.js';
 import { aiDevelopCity, cityYields, startWalls } from './city.js';
@@ -69,7 +69,8 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   const provs = shuffle(st, nationProvinces(st, nid));
   // 人事
   for (const p of provs) {
-    for (const g of roninIn(st, p.id)) if (g.hireTried !== st.turn && chance(st, 0.5)) tryHire(st, nid, g.id);
+    const roomToHire = nationGenerals(st, nid).length < provs.length * 4 + 3;
+    if (roomToHire) for (const g of roninIn(st, p.id)) if (g.hireTried !== st.turn && chance(st, 0.5)) tryHire(st, nid, g.id, { gold: nat.gold > 3000 && g.named ? 300 : 0 });
     const gov = st.generals[p.governorId];
     if (!gov || !gov.alive || gov.province !== p.id || gov.nation !== nid) assignBestGovernor(st, p.id);
   }
