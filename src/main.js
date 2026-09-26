@@ -271,6 +271,7 @@ class App {
       <span class="btns">
         ${this.mode === 'city' ? '<button class="btn" data-a="back">地図へ戻る</button>' : ''}
         <button class="btn" data-a="retainers">家臣</button>
+        <button class="btn" data-a="research">研究</button>
         <button class="btn" data-a="harem">後宮</button>
         <button class="btn" data-a="diplo">外交</button>
         <button class="btn" data-a="nations">勢力</button>
@@ -287,6 +288,7 @@ class App {
       if (a === 'back') this.leaveCity();
       if (a === 'diplo') { await diplomacyDialog(this); this.refresh(); }
       if (a === 'retainers') { await retainerDialog(this); this.refresh(); }
+      if (a === 'research') { await X.researchDialog(this); this.refresh(); }
       if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
@@ -541,6 +543,7 @@ class App {
   // ================= 箱庭 =================
   enterCity(pid) {
     this.mode = 'city';
+    $('#advice').classList.add('hidden');
     this.cityPid = pid;
     this.city.tool = null;
     this.city.open(this.st, pid);

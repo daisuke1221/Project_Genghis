@@ -7,7 +7,8 @@ import {
   canAttack, isActive, randomGeneral, addGeneral,
 } from './state.js';
 import { cityYields } from './city.js';
-import { transferCityTechs } from './tech.js';
+import { transferCityTechs, captureArtisans } from './tech.js';
+import { learnFrom } from './research.js';
 import { orphanNation } from './royal.js';
 import { adminOnConquest } from './admin.js';
 import { battleAftermath, hasTrait } from './personnel.js';
@@ -132,6 +133,8 @@ export function occupy(st, nid, gids, to, from) {
     g.captiveOf = nid;
   }
   if (prevOwner) {
+    captureArtisans(st, to, nid, prevOwner);
+    learnFrom(st, nid, prevOwner, `${PROV_DEF[to].city}の攻略で`);
     adjustRelation(st, prevOwner, nid, -30);
     checkNationAlive(st, prevOwner, nid);
   }

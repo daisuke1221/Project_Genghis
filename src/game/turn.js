@@ -19,6 +19,7 @@ import { siegeTick, flushCaptives } from './siege.js';
 import { adminTick } from './admin.js';
 import { personnelTick, personnelYear, hasTrait } from './personnel.js';
 import { supplyTick, mercTick, fatigueTick } from './warfare.js';
+import { researchTick } from './research.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -108,6 +109,7 @@ export function seasonTick(st) {
   diplomacyTick(st);
   healTick(st);
   techTick(st);
+  researchTick(st);
   royalTick(st);
   courtTick(st);
   personnelTick(st);

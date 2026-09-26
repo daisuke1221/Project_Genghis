@@ -216,6 +216,31 @@ export class CityView {
       model.traverse((o) => { if (o.userData.flag) this.animated.push({ flag: o, phase: Math.random() * 10 }); });
     }
     this.buildAdminProps(city);
+    this.buildTechFigures();
+  }
+
+  // 配置された技術者を宮殿の前に立たせる（職ごとに帽子の色と道具が違う）
+  buildTechFigures() {
+    const techs = Object.values(this.state.techs || {}).filter((t) => t.city === this.pid);
+    const HAT = { farmer: 0x6b8e23, herder: 0x8b5a2b, merchant: 0xd4a94a, artisan: 0x708090, architect: 0xa0522d, engineer: 0x4a4a4a, scholar: 0x2e4a8a, smith: 0x8a1c1c };
+    techs.forEach((t, i) => {
+      const [px, pz] = tilePos(CENTER + (i ? 1 : -1), CENTER + 1);
+      const f = M.person(0xe8e0cc);
+      f.scale.setScalar(2.2);
+      f.add(M.cone(HAT[t.type] ?? 0x888888, 0.07, 0.09, 0, 0.33, 0, 6));
+      const tool = t.type === 'scholar' ? M.box(0xf2efe6, 0.08, 0.1, 0.02, 0.07, 0.16, 0.05) : t.type === 'merchant' ? M.box(0xd4a94a, 0.07, 0.07, 0.07, 0.08, 0.1, 0.03) : M.box(0x5a3a1a, 0.02, 0.22, 0.02, 0.08, 0.1, 0.03);
+      f.add(tool);
+      f.position.set(px, 0.2, pz - 0.4);
+      f.rotation.y = Math.PI;
+      this.bGroup.add(f);
+      // 名札
+      const el = document.createElement('div');
+      el.className = 'tech-tag';
+      el.textContent = `${t.name}（${'★'.repeat(t.level)}）`;
+      const tag = new CSS2DObject(el);
+      tag.position.set(0, 0.55, 0);
+      f.add(tag);
+    });
   }
 
   // 内政の成果を箱庭に表す：治水の堤、商業の露店

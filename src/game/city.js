@@ -4,6 +4,7 @@ import { rnd, rint, chance, pick } from './rng.js';
 import { techBonus } from './tech.js';
 import { importLoyalty } from './trade.js';
 import { adminMods } from './admin.js';
+import { knows } from './research.js';
 
 export const GRID = 9;
 export const CENTER = 4;
@@ -172,10 +173,10 @@ export function cityYields(st, pid, season = st.season) {
   const am = adminMods(st, pid);
   tot.admin = am;
   tot.tax = Math.round(city.pop * 0.012 * (0.5 + city.loyalty / 100) * (1 + tb.tax) * am.taxMul);
-  tot.gold = Math.round((tot.gold + tot.tax) * polMul * am.goldMul);
+  tot.gold = Math.round((tot.gold + tot.tax) * polMul * am.goldMul * (p.owner && knows(st, p.owner, 'paper_money') ? 1.08 : 1));
   tot.speed += gov ? gov.pol / 100 : 0;
   tot.speed = Math.min(tot.speed, 3);
-  tot.food = Math.round(tot.food * (gov ? 0.9 + gov.pol / 500 : 0.85) * am.farmMul);
+  tot.food = Math.round(tot.food * (gov ? 0.9 + gov.pol / 500 : 0.85) * am.farmMul * (p.owner && knows(st, p.owner, 'qanat') ? 1.1 : 1));
   tot.foodUse = Math.round(city.pop * 0.01);
   tot.loyaltyTarget = Math.round(45 + tot.loyalty * 2 + (gov ? (gov.cha - 50) / 4 : -5) + am.loyaltyAdj);
   return tot;
@@ -243,8 +244,9 @@ export function canBuildWalls(st, pid) {
   if (c.wallProgress !== null) return { ok: false, reason: '建設中です' };
   if (c.walls >= WALLS.length - 1) return { ok: false, reason: '最大です' };
   const w = WALLS[c.walls + 1];
-  if (st.nations[p.owner].gold < w.cost) return { ok: false, reason: `金が足りません（${w.cost}）`, cost: w.cost };
-  return { ok: true, cost: w.cost };
+  const cost = Math.round(w.cost * (knows(st, p.owner, 'fortification') ? 0.7 : 1));
+  if (st.nations[p.owner].gold < cost) return { ok: false, reason: `金が足りません（${cost}）`, cost };
+  return { ok: true, cost };
 }
 export function startWalls(st, pid) {
   const chk = canBuildWalls(st, pid);

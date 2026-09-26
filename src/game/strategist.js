@@ -6,6 +6,7 @@ import { adjustRelation } from './military.js';
 import { atWar, breakTreaty, friendsOf, enemiesOf } from './diplomacy.js';
 import { roleHolder, rebelRisk, hasTrait } from './personnel.js';
 import { adminOf } from './admin.js';
+import { available as availableInnov } from './research.js';
 
 export const strategistOf = (st, nid) => roleHolder(st, nid, 'strategist');
 const canAct = (st, g) => g && !g.moved && !(g.wound > st.turn) && !g.captiveOf;
@@ -211,6 +212,7 @@ export function strategistAdvice(st, nid) {
   const soldiers = Object.values(st.generals).filter((g) => g.alive && g.nation === nid).reduce((a, g) => a + (g.unit?.soldiers ?? 0), 0);
   const net = (nat.lastIncome?.food ?? 0) - soldiers * 0.1;
   if (net < 0 && nat.food < -net * 3) add(70, `兵糧が心もとありません。このままでは${Math.max(1, Math.floor(nat.food / -net))}季ほどで尽きます。`);
+  if (!nat.research?.key && availableInnov(st, nid).length) add(35, '研究する技術が定まっていません。「研究」で方針を決めましょう。');
   const n = 1 + Math.floor(s.pol / 30);
   const seen = new Set();
   const lines = items.sort((a, b) => b.pri - a.pri).filter((x) => !seen.has(x.text) && seen.add(x.text)).slice(0, n).map((x) => x.text);

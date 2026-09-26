@@ -5,6 +5,8 @@ import { generalsIn } from './state.js';
 import { roleOf, ensurePersonnel } from './personnel.js';
 import { aiFormation, formationOf, isSeaLink, fatigueOf } from './warfare.js';
 
+const hasInnov = (b, side, key) => !!b.innov?.[side]?.includes(key);
+
 const ht = (u, t) => !!u.traits?.includes(t);
 const effWar = (u) => u.war + (ht(u, 'hero') ? 10 : 0) + (UNIT_TYPES[u.type]?.duel ?? 0);
 
@@ -75,6 +77,7 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
     rng: Math.floor(rnd(st) * 4294967296) >>> 0,
   };
   b.weather = pickWeather(b, st.season, def.terrain);
+  b.innov = { att: Object.keys(st.nations[attNation]?.innov ?? {}), def: Object.keys(st.nations[defNation]?.innov ?? {}) };
   genMap(b);
   const nomad = (nid) => ['mongol', 'turkic'].includes(st.nations[nid]?.culture);
   const rulerIds = new Set(Object.values(st.nations).map((n) => n.rulerId));
@@ -126,7 +129,7 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
   // 渡海：荒波で兵を失うことがあり、上陸直後は士気が落ちる
   if (!field && fromProvince && isSeaLink(fromProvince, provinceId)) {
     let lost = 0;
-    const storm = rnd(st) < 0.2;
+    const storm = !hasInnov(b, 'att', 'compass') && rnd(st) < 0.2;
     for (const u of att) { u.morale -= 10; if (storm) { const l = Math.round(u.soldiers * 0.1); u.soldiers -= l; u.start = u.soldiers; lost += l; } }
     b.notes.push(storm ? `渡海中に嵐に遭い、攻撃側は${lost}の兵を失った` : '攻撃側は海を渡って上陸したばかりで、隊列が整っていない');
   }
@@ -344,6 +347,8 @@ export function defenseFactors(b, u) {
   if (isMounted(u) && tt === 'forest') { d *= 0.85; f.push(['騎馬は森で守りにくい', 1 / 0.85]); }
   if (u.commander) { d *= 1.1; f.push(['総大将の親衛', 1 / 1.1]); }
   if (ht(u, 'ironwall')) { d *= 1.15; f.push(['鉄壁', 1 / 1.15]); }
+  if (isMounted(u) && hasInnov(b, u.side, 'heavy_cavalry')) { d *= 1.08; f.push(['重装騎兵の鎧', 1 / 1.08]); }
+  if (isCastle(tt) && u.side === 'def' && hasInnov(b, 'def', 'fortification')) { d *= 1.1; f.push(['築城術', 1 / 1.1]); }
   const F = formationOf(b, u.side);
   if (F.def && F.def !== 1) { d *= F.def; f.push([`${F.name}の陣`, 1 / F.def]); }
   if (ht(u, 'fortify') && isCastle(tt) && u.side === 'def') { d *= 1.15; f.push(['築城の名手', 1 / 1.15]); }
@@ -374,7 +379,8 @@ export function damageFactors(b, a, t, from = [a.c, a.r], movedDist = a.movedDis
   if (a.fatigue >= 20) add('連戦の疲れ', 1 - a.fatigue / 400);
   if (a.hidden) add('伏兵の奇襲', 1.5);
   if (!ranged && AT.range > 1 && !AT.noMeleePenalty) add('弓兵の白兵戦', 0.6);
-  if (a.type === 'siege') add(castleTarget ? '攻城兵器で城を攻める' : '攻城兵器の野戦', castleTarget ? 3 : 0.5);
+  if (a.type === 'siege') add(castleTarget ? (hasInnov(b, a.side, 'trebuchet') ? '回回砲で城を攻める' : '攻城兵器で城を攻める') : '攻城兵器の野戦', castleTarget ? (hasInnov(b, a.side, 'trebuchet') ? 4.5 : 3) : 0.5);
+  if (AT.range > 1 && hasInnov(b, a.side, 'composite_bow')) add('改良された合成弓', 1.08);
   else if (ranged && castleTarget && !AT.pierce) add('城壁越しの射撃', 0.6);
   // 高低差
   if (at === 'hill' && tt !== 'hill') add('高所から攻める', ranged ? 1.15 : 1.2);
@@ -558,6 +564,7 @@ export function tacticChance(b, u, id, t) {
   }
   if (ht(u, 'cunning')) p += 0.1;
   if (b.strategist?.[u.side]) p += 0.1;
+  if (id === 'fire' && hasInnov(b, u.side, 'gunpowder')) p += 0.15;
   return Math.max(0.1, Math.min(0.9, p));
 }
 
@@ -595,7 +602,7 @@ export function useTactic(b, u, id, t) {
   if (!ok) return events;
   if (id === 'fire') {
     const tt = tileOf(b, t.c, t.r).t;
-    let dmg = t.soldiers * (0.1 + u.pol / 900) * (tt === 'forest' ? 1.5 : isCastle(tt) ? 1.2 : 1);
+    let dmg = t.soldiers * (0.1 + u.pol / 900) * (tt === 'forest' ? 1.5 : isCastle(tt) ? 1.2 : 1) * (hasInnov(b, u.side, 'gunpowder') ? 1.5 : 1);
     dmg = Math.round(Math.min(t.soldiers, dmg * (0.85 + brnd(b) * 0.3)));
     ev.dmg = dmg;
     t.morale -= 12;
