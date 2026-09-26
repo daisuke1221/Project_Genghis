@@ -230,3 +230,10 @@ input[type=range] { accent-color: var(--gold); }
 .admin-cmds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
 .admin-cmd { text-align: left; line-height: 1.35; padding: 6px 8px; }
 @media (max-width: 640px) { .admin-cmds { grid-template-columns: repeat(2, 1fr); } }
+
+/* 人事 */
+.trait { display: inline-block; font-size: 11px; padding: 0 5px; margin: 1px 2px 1px 0; border: 1px solid var(--gold-dim); border-radius: 3px; color: #e8d8a8; background: rgba(212,169,74,.12); cursor: help; white-space: nowrap; }
+.trait.bad { border-color: #a04a3a; color: #ffb0a0; background: rgba(200,60,40,.15); }
+.trait.good { border-color: #4a8a4a; color: #b8f0b0; background: rgba(60,160,60,.15); }
+.role-tag { font-size: 11px; padding: 0 4px; border-radius: 3px; background: #6d5218; color: #fff; white-space: nowrap; }
+table.list th.clickable { cursor: pointer; }

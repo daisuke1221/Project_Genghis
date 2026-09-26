@@ -4,7 +4,7 @@ import { chance, shuffle, rnd } from './rng.js';
 import { NEIGHBORS } from './geo.js';
 import {
   NATION_DEF, nationProvinces, generalsIn, roninIn, unitCap, unitPower, stackPower,
-  assignBestGovernor, canAttack, relation, treaty,
+  assignBestGovernor, canAttack, relation, treaty, log,
 } from './state.js';
 import { aiDevelopCity, cityYields, startWalls } from './city.js';
 import { recruit, recruitQuote, tryHire, adjustRelation, searchTalent, recruitLimit } from './military.js';
@@ -15,6 +15,7 @@ import { aiTrade } from './trade.js';
 import { becomeConsort } from './royal.js';
 import { aiSieges } from './siege.js';
 import { aiAdmin } from './admin.js';
+import { aiSubvert } from './personnel.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -73,6 +74,9 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   const pids = provs.map((p) => p.id);
   aiHireTech(st, nid, pids);
   if (chance(st, 0.2)) aiTrade(st, nid, pids);
+
+  // 調略
+  aiSubvert(st, nid, (t, imp) => log(st, t, imp));
 
   // 徴兵
   aiRecruit(st, nid, reserve);

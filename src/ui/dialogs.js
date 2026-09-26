@@ -10,6 +10,8 @@ import { nationPower, gift, propose, breakTreaty, acceptChance } from '../game/d
 import { cityYields } from '../game/city.js';
 import { portrait } from './portrait.js';
 import { defenders, initialSupply, siegeAt } from '../game/siege.js';
+import { traitChips, rankLabel, loyaltyCell, compatCell } from './retainerDialog.js';
+import { canPromote, promoteCost, promote, roleOf, ROLES } from '../game/personnel.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -110,18 +112,20 @@ export function personnelDialog(app, pid) {
   const st = app.st, nid = st.playerNation;
   return modal({
     title: `${PROV_DEF[pid].city}の人事`,
-    width: '720px',
+    width: '940px',
     body: (el) => {
       const render = () => {
         const p = st.provinces[pid];
         const gens = generalsIn(st, pid, nid);
         const ronin = roninIn(st, pid);
         el.innerHTML = `<h3>配下の武将</h3>
-          <table class="list"><tr><th>武将</th><th>年齢</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>忠誠</th><th></th></tr>
-          ${gens.map((g) => `<tr><td>${esc(g.name)}${p.governorId === g.id ? ' <span class="pos">［太守］</span>' : ''}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td>
-            <td>${g.loyalty}</td><td class="row">${p.governorId === g.id ? '' : `<button class="btn small" data-gov="${g.id}">太守に任命</button>`}
+          <table class="list"><tr><th>武将</th><th>年齢</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>位階</th><th>特技</th><th>相性</th><th>忠誠→目標</th><th></th></tr>
+          ${gens.map((g) => `<tr><td>${esc(g.name)}${p.governorId === g.id ? ' <span class="pos">［太守］</span>' : ''}${roleOf(st, g) ? ` <span class="role-tag">${ROLES[roleOf(st, g)].name}</span>` : ''}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td>
+            <td>${rankLabel(g)}</td><td>${traitChips(g)}</td><td>${compatCell(st, g)}</td><td>${loyaltyCell(st, g)}</td>
+            <td class="row">${p.governorId === g.id ? '' : `<button class="btn small" data-gov="${g.id}">太守に任命</button>`}
+            ${canPromote(g) ? `<button class="btn small primary" data-promote="${g.id}">昇進(${promoteCost(g)}金)</button>` : ''}
             ${st.nations[nid].rulerId === g.id ? '' : `<button class="btn small" data-rw="${g.id}">褒美(100金)</button>`}</td></tr>`).join('')}</table>
-          <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が低い武将は出奔することがあります。</p>
+          <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が35を下回ると出奔し、不満の大きい太守は謀反を起こします。役職・特技の詳細は上部の「家臣」から。</p>
           <h3>在野の人材</h3>
           ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>成功率</th><th></th></tr>
             ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${Math.round(hireChance(st, nid, g) * 100)}%</td>
@@ -131,6 +135,7 @@ export function personnelDialog(app, pid) {
       el.onclick = (e) => {
         const t = e.target;
         if (t.dataset.gov) { st.provinces[pid].governorId = t.dataset.gov; audio.sfx('click'); render(); }
+        if (t.dataset.promote) { const r = promote(st, t.dataset.promote); if (r.ok) { audio.sfx('coin'); toast(`${r.rank}に昇進させた`); } else toast(r.reason); render(); app.renderTopbar(); }
         if (t.dataset.rw) { if (reward(st, t.dataset.rw, 100)) { audio.sfx('coin'); toast('忠誠が上がった'); } else toast('金が足りません'); render(); app.renderTopbar(); }
         if (t.dataset.hire) {
           const g = st.generals[t.dataset.hire];
@@ -288,6 +293,11 @@ export function helpDialog() {
       <ul><li>徴兵：武将ごとに兵を集めます（兵数の上限は統率×30）。騎兵・弓騎兵には馬が必要です（牧場で生産）。</li>
       <li>出陣・移動：武将を選んで隣の地方へ。敵地なら合戦になります。守備兵のいない地方はそのまま占領できます。</li>
       <li>合戦はヘックスの戦場で行います。騎兵は2マス以上移動してから攻撃すると突撃ボーナス、敵を囲むと挟撃ボーナス。丘・森・城は防御に有利。攻撃側は20ターン以内に敵を全滅させるか本丸を占拠すれば勝利です。</li></ul>
+      <h3>人事・家臣団</h3>
+      <ul><li>上部の「家臣」で家臣の一覧・役職（宰相・軍師・大将軍）・特技を確認できます。役職は兼任できず、就くと忠誠が上がります。</li>
+      <li>合戦・内政・調略で功績が貯まり、十人長→百人長→千人長→万人長と昇進させられます（兵の上限+5%/位階）。功績が届いたのに昇進させないと不満が出ます。</li>
+      <li>忠誠は毎季、目標値（君主の魅力・相性・位階・役職・特技など）へ近づきます。35未満で出奔し、不満の大きい太守は謀反を起こします。</li>
+      <li>敵地を選ぶと「調略」で敵将を引き抜いたり、次の合戦で寝返らせる内応を約束させたりできます。</li></ul>
       <h3>後宮・王族</h3>
       <ul><li>上部の「後宮」から妃を寵愛し（一季に一人）、子を授かりましょう。男子は15歳で一門の武将として出仕し、後継ぎになります。</li>
       <li>姫が15歳になったら、他国の君主に嫁がせて婚姻同盟を結ぶか、家臣に嫁がせて忠誠を100にできます。他国に縁談を申し込んで妃を迎えることもできます。</li></ul>

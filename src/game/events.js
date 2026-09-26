@@ -8,6 +8,19 @@ import {
 } from './state.js';
 import { killGeneral, changeOwner, adjustRelation, checkNationAlive } from './military.js';
 import { declareWar, sign, areNeighbors, nationPower } from './diplomacy.js';
+import { setRebelHook } from './personnel.js';
+
+// 謀反：太守が地方ごと自立する
+setRebelHook((st, g, pid, ids) => {
+  const old = g.nation;
+  const id = `reb_${g.id}`;
+  if (st.nations[id]) return null;
+  const color = `#${[0, 0, 0].map(() => rint(st, 60, 220).toString(16).padStart(2, '0')).join('')}`;
+  const nat = spawnNation(st, { id, name: `${PROV_DEF[pid].region}（${g.name}）`, color, culture: st.nations[old].culture, aggro: 0.7 }, [pid], ids);
+  declareWar(st, id, old);
+  adjustRelation(st, id, old, -60);
+  return nat;
+});
 
 // ---------- ヘルパー ----------
 export const gen = (st, ...names) => Object.values(st.generals).find((g) => g.alive && names.includes(g.name)) || null;

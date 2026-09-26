@@ -10,6 +10,8 @@ import * as D from './ui/dialogs.js';
 import * as X from './ui/extraDialogs.js';
 import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
 import { adminDialog } from './ui/adminDialog.js';
+import { retainerDialog, subvertDialog } from './ui/retainerDialog.js';
+import { TRAITS, ROLES, RANKS, roleOf, rebelRisk, subvertTargets, ensurePersonnel } from './game/personnel.js';
 import { adminOf, provReligion, nationReligion, RELIGIONS, TAX_LEVELS } from './game/admin.js';
 import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
 import { siegeAt, siegeInfo, assault, sally, liftSiege } from './game/siege.js';
@@ -264,6 +266,7 @@ class App {
       <span class="spacer"></span>
       <span class="btns">
         ${this.mode === 'city' ? '<button class="btn" data-a="back">地図へ戻る</button>' : ''}
+        <button class="btn" data-a="retainers">家臣</button>
         <button class="btn" data-a="harem">後宮</button>
         <button class="btn" data-a="diplo">外交</button>
         <button class="btn" data-a="nations">勢力</button>
@@ -279,6 +282,7 @@ class App {
       if (a === 'end') this.endTurn();
       if (a === 'back') this.leaveCity();
       if (a === 'diplo') { await diplomacyDialog(this); this.refresh(); }
+      if (a === 'retainers') { await retainerDialog(this); this.refresh(); }
       if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
@@ -345,7 +349,8 @@ class App {
         <b>交易路</b>：${routes.length ? routes.map((r) => `→${PROV_DEF[r.to].city}${r.last ? (r.last.raided ? '<span class="neg">(略奪)</span>' : `<span class="pos">(+${fmt(r.last.profit)})</span>`) : ''}`).join('、') : '<span class="muted">なし</span>'}
         <span class="muted">／特産 ${def.specialty} 在庫${fmt(c.goods?.[def.specialty] ?? 0)}荷</span></div>`;
     } else {
-      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}</div>`;
+      const canSub = p.owner && subvertTargets(st, st.playerNation).some((g) => g.province === pid && g.nation === p.owner);
+      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}${canSub ? '<button class="btn" data-a="subvert" title="敵将を引き抜く・内応させる">調略</button>' : ''}</div>`;
     }
     const si = siegeInfo(st, pid);
     if (si) {
@@ -365,7 +370,10 @@ class App {
     const showStats = own || gens.length <= 6;
     for (const g of gens) {
       const u = g.unit;
-      html += `<div class="gen-row"><span>${g.id === nat?.rulerId ? '👑' : ''}${esc(g.name)}${g.moved ? ' <span class="muted">済</span>' : ''}</span>
+      ensurePersonnel(g);
+      const role = roleOf(st, g);
+      const tr = g.traits.map((t) => TRAITS[t].name).join('・');
+      html += `<div class="gen-row"><span>${g.id === nat?.rulerId ? '👑' : ''}${esc(g.name)}${role ? ` <span class="role-tag">${ROLES[role].name}</span>` : ''}${g.moved ? ' <span class="muted">済</span>' : ''}${own && rebelRisk(st, g) > 0 ? ' <span class="neg">不穏</span>' : ''}${showStats && tr ? ` <span class="muted small">${tr}</span>` : ''}</span>
         <span class="muted">${showStats ? `武${g.war} 統${g.lead} 政${g.pol}` : ''}</span></div>
         <div class="gen-row"><span class="muted">&nbsp;&nbsp;${u && u.soldiers > 0 ? `${UNIT_TYPES[u.type].name} ${fmt(u.soldiers)}（訓練${u.training}）` : '兵なし'}${g.wound > st.turn ? ` <span class="neg">負傷・あと${g.wound - st.turn}季</span>` : ''}</span>${own ? `<span class="muted">忠${g.loyalty}</span>` : ''}</div>`;
     }
@@ -382,6 +390,7 @@ class App {
       if (a === 'trade') { await X.tradeDialog(this, pid); this.refresh(); }
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
       if (a === 'admin') { await adminDialog(this, pid); this.refresh(); }
+      if (a === 'subvert') { await subvertDialog(this, pid); this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
       if (a === 'diplo') { await diplomacyDialog(this, p.owner); this.refresh(); }
       if (a === 'assault') { audio.sfx('horn'); const r = await assault(this.st, pid, this.hooks); if (r.reason) toast(r.reason); else toast(r.fell ? `${def.city}を攻め落とした！` : '総攻撃は失敗した…'); this.checkOver(); this.refresh(); }

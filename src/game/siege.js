@@ -4,6 +4,7 @@ import { NEIGHBORS } from './geo.js';
 import { PROV_DEF, generalsIn, unitPower, unitCap, log, nationProvinces } from './state.js';
 import { killGeneral, applyBattle, woundGeneral, isWounded } from './military.js';
 import { createBattle, autoResolve } from './battle.js';
+import { battleAftermath } from './personnel.js';
 import { atWar, friendsOf } from './diplomacy.js';
 import { handleCaptives, gatherReinforcements } from './actions.js';
 
@@ -192,6 +193,8 @@ export async function assault(st, pid, hooks = {}) {
 
 // 合戦の損害だけを反映する（占領を伴わない野戦用）
 function applyLosses(st, result) {
+  for (const u of result.units) if (u.turncoat) log(st, `${st.generals[u.gid]?.name}が寝返った！`, true);
+  battleAftermath(st, result);
   for (const u of result.units) {
     const g = st.generals[u.gid];
     if (!g?.unit) continue;

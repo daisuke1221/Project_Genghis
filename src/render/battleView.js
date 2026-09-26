@@ -1,5 +1,6 @@
 // 合戦ビュー：ヘックス戦場の3D表示とプレイヤー操作
 import * as THREE from 'three';
+import { TRAITS, ROLES } from '../game/personnel.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { UNIT_TYPES } from '../game/data.js';
@@ -175,7 +176,7 @@ export class BattleView {
     const pct = Math.max(0, u.soldiers / Math.max(1, u.start));
     const col = u.side === this.playerSide ? '#6fdc6f' : '#ff6a5a';
     o.el.className = `unit-label${u.acted && u.side === this.b.side ? ' done' : ''}`;
-    const tags = `${u.commander ? '<span class="cmd">★</span>' : ''}${u.ally ? '<span style="color:#9fd0ff">援</span>' : ''}${u.hidden ? '<span class="hid">伏</span>' : ''}${u.confused ? '<span class="neg">乱</span>' : ''}${u.wounded ? '<span class="neg">傷</span>' : ''}`;
+    const tags = `${u.commander ? '<span class="cmd">★</span>' : ''}${u.ally ? '<span style="color:#9fd0ff">援</span>' : ''}${u.hidden ? '<span class="hid">伏</span>' : ''}${u.confused ? '<span class="neg">乱</span>' : ''}${u.wounded ? '<span class="neg">傷</span>' : ''}${u.turncoat ? '<span style="color:#ffb347">寝</span>' : ''}${u.role === 'strategist' ? '<span style="color:#c9a0ff">師</span>' : u.role === 'marshal' ? '<span style="color:#ffd27a">将</span>' : ''}`;
     o.el.innerHTML = `<div>${tags}${u.name}<span style="opacity:.8">［${T.short}］</span></div><div>${u.soldiers.toLocaleString()}</div>` +
       `<div class="hp"><i style="width:${pct * 100}%;background:${col}"></i></div><div class="mo"><i style="width:${Math.max(0, u.morale)}%"></i></div>`;
     o.g.visible = !u.routed && !(u.hidden && u.side !== this.playerSide);
@@ -270,7 +271,9 @@ export class BattleView {
         <span>士気</span><span>${Math.max(0, Math.round(u.morale))}</span>
         <span>訓練</span><span>${u.training}</span>
         <span>武力/統率</span><span>${u.war} / ${u.lead}</span>
-        <span>地形</span><span>${BATTLE_TERRAIN[tt].name}</span></div></div>`;
+        <span>地形</span><span>${BATTLE_TERRAIN[tt].name}</span>
+        ${u.role ? `<span>役職</span><span>${ROLES[u.role].name}</span>` : ''}
+        ${u.traits?.length ? `<span>特技</span><span>${u.traits.map((t) => TRAITS[t].name).join('・')}</span>` : ''}</div></div>`;
       if (this.selected && u.side !== this.playerSide && this.selected.side === this.playerSide) {
         const est = Math.round(estimateDamage(this.b, this.selected, u));
         const fmtF = ([label, m]) => `<div class="${m >= 1 ? 'pos' : 'neg'}">${label} ×${m.toFixed(2)}</div>`;

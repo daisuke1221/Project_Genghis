@@ -10,6 +10,7 @@ import { cityYields } from './city.js';
 import { transferCityTechs } from './tech.js';
 import { orphanNation } from './royal.js';
 import { adminOnConquest } from './admin.js';
+import { battleAftermath, hasTrait } from './personnel.js';
 
 // ---- 徴兵 ----
 export function recruitLimit(st, pid) {
@@ -177,6 +178,8 @@ export function adjustRelation(st, a, b, d) {
 export function applyBattle(st, result, attIds) {
   const { winner, provinceId: to, fromProvince: from, attNation, defNation } = result;
   const msgs = [];
+  for (const u of result.units) if (u.turncoat) msgs.push(`${st.generals[u.gid]?.name}が寝返った！`);
+  battleAftermath(st, result);
   for (const u of result.units) {
     const g = st.generals[u.gid];
     if (!g?.unit) continue;
@@ -195,7 +198,7 @@ export function applyBattle(st, result, attIds) {
   adjustRelation(st, attNation, defNation, -25);
   let captives = [];
   if (winner === 'att') {
-    const alive = attIds.filter((id) => st.generals[id]?.alive);
+    const alive = attIds.filter((id) => st.generals[id]?.alive && st.generals[id].nation === attNation);
     captives = occupy(st, attNation, alive, to, from);
     msgs.push(`${st.nations[attNation].name}軍が${PROV_DEF[to].city}を攻略した。`);
   } else {
@@ -210,6 +213,8 @@ export function recruitChance(st, captor, g) {
   const r = ruler(st, captor);
   let p = 0.35 + ((r?.cha ?? 50) - (g.nation ? g.loyalty : 50)) / 100;
   if (g.family) p -= 0.5;
+  if (hasTrait(g, 'loyal')) p -= 0.4;
+  if (r && hasTrait(r, 'eloquent')) p += 0.15;
   return Math.max(0.03, Math.min(0.95, p));
 }
 
@@ -316,7 +321,7 @@ export function destroyNation(st, nid, byNid) {
 // ---- 人事 ----
 export function hireChance(st, nid, g) {
   const r = ruler(st, nid);
-  return Math.max(0.1, Math.min(0.9, 0.4 + ((r?.cha ?? 50) - 50) / 100 + (g.cha < 50 ? 0.1 : 0)));
+  return Math.max(0.1, Math.min(0.9, 0.4 + ((r?.cha ?? 50) - 50) / 100 + (g.cha < 50 ? 0.1 : 0) + (r && hasTrait(r, 'eloquent') ? 0.15 : 0)));
 }
 export function tryHire(st, nid, gid) {
   const g = st.generals[gid];
