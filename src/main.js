@@ -79,6 +79,16 @@ class App {
       },
     };
     document.addEventListener('keydown', (e) => this.onKey(e));
+    applyFontScale(loadFontScale());
+    // 上部バーが折り返して高くなったら、その下のパネルをずらす
+    // 左下のログ欄の高さも測り、左側のパネルがその上で止まるようにする
+    const ro = new ResizeObserver(() => {
+      const h = $('#topbar').offsetHeight;
+      if (h) document.documentElement.style.setProperty('--top-h', `${h}px`);
+      document.documentElement.style.setProperty('--log-h', `${$('#log').offsetHeight}px`);
+    });
+    ro.observe($('#topbar'));
+    ro.observe($('#log'));
     this.showTitle();
   }
 
@@ -190,7 +200,7 @@ class App {
       $('#screen').innerHTML = `
         <div class="panel select-head">${sc.year}年「${sc.title}」— プレイする勢力を地図から選んでください</div>
         <div class="panel select-panel">
-          <h2><span class="swatch" style="background:${n.color}"></span>${n.name}${chosen === sc.recommended ? ' <span class="muted" style="font-size:13px">おすすめ</span>' : ''}</h2>
+          <h2><span class="swatch" style="background:${n.color}"></span>${n.name}${chosen === sc.recommended ? ' <span class="muted" style="font-size:calc(13px * var(--fs))">おすすめ</span>' : ''}</h2>
           <div class="grid2">
             <span>君主</span><span>${r.name}（${st.year - r.birth}歳）</span>
             <span>文化</span><span>${cultureName(st.nations[chosen].culture)}</span>
@@ -389,7 +399,7 @@ class App {
       </div>`;
       const techs = techsIn(st, pid);
       const routes = routesFrom(st, pid);
-      html += `<div class="sect" style="font-size:13px"><b>技術者</b>：${techs.length ? techs.map((t) => `${esc(t.name)}（${TECH_TYPES[t.type].name}${'★'.repeat(t.level)}）`).join('、') : '<span class="muted">なし</span>'}<br>
+      html += `<div class="sect" style="font-size:calc(13px * var(--fs))"><b>技術者</b>：${techs.length ? techs.map((t) => `${esc(t.name)}（${TECH_TYPES[t.type].name}${'★'.repeat(t.level)}）`).join('、') : '<span class="muted">なし</span>'}<br>
         <b>交易路</b>：${routes.length ? routes.map((r) => `→${PROV_DEF[r.to].city}${r.last ? (r.last.raided ? '<span class="neg">(略奪)</span>' : `<span class="pos">(+${fmt(r.last.profit)})</span>`) : ''}`).join('、') : '<span class="muted">なし</span>'}
         <span class="muted">／特産 ${def.specialty} 在庫${fmt(c.goods?.[def.specialty] ?? 0)}荷</span></div>`;
     } else {
@@ -804,6 +814,13 @@ class App {
     return true;
   }
 
+  // 文字の大きさ（設定画面から）
+  get fontScales() { return FONT_SCALES; }
+  setFontScale(v) {
+    applyFontScale(v);
+    if (this.st) this.refresh();
+  }
+
   // ================= セーブ・ロード =================
   autosave() { this.saveSlot('auto'); }
   saveSlot(slot) {
@@ -839,4 +856,15 @@ class App {
 }
 
 export const SAVE_KEY_PREFIX = SAVE_PREFIX;
+
+// 文字の大きさ（設定から変えられる。ブラウザに保存）
+export const FONT_SCALES = [['標準', 1], ['大', 1.2], ['特大', 1.4]];
+const FONT_KEY = 'steppe-khan.fontScale';
+export function loadFontScale() {
+  try { const v = Number(localStorage.getItem(FONT_KEY)); return FONT_SCALES.some(([, s]) => s === v) ? v : 1.2; } catch { return 1.2; }
+}
+export function applyFontScale(v) {
+  document.documentElement.style.setProperty('--fs', String(v));
+  try { localStorage.setItem(FONT_KEY, String(v)); } catch { /* 保存できなくても表示は変える */ }
+}
 window.app = new App();
