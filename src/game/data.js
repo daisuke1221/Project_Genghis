@@ -105,19 +105,17 @@ export const PROVINCES = [
   P('osh', '奥州', '平泉', 39.8, 141.5, 'forest', '砂金', 60, 8000),
 ];
 
-// 海の種点（ボロノイで海域をつくる）
-export const SEA_SITES = [
-  [56, 3], [60, 8], [47, -8], [43, -12], [52, -8], [58, -4], [37, -5],
-  [57, 19], [60, 22], [38, 17], [35, 22], [34, 28], [33, 16], [36, 5], [40, 5], [40, 16],
-  [43.5, 34], [44, 37], [42.5, 31], [45, 32],
-  [41, 51], [44, 50], [38.5, 51],
-  [27, 51], [24, 56], [25, 60], [19, 64], [18, 72], [20, 88], [16, 92], [20, 118], [17, 110], [22, 124],
-  [27, 125], [31, 126], [34, 123], [38, 120.5], [40, 136], [43, 135], [37, 132], [33, 136], [31, 140], [36, 144], [40, 145], [44, 143], [45, 139],
-  [23, 38], [20, 40], [26, 35], [31.5, 30.5],
-];
-
-export const EXTRA_LINKS = [['egy', 'syr'], ['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw'], ['song', 'kyu'], ['ita', 'syr']];
-export const CUT_LINKS = [];
+// 地方の隣接（ゲームのルール。地図の描き方が変わっても変わらないよう固定している。海を渡るものは SEA_LINKS にも載せる）
+export const ADJACENCY = `
+aze-geo aze-ira aze-irq aze-syr bal-kas bal-kaz bal-sam bal-uig bul-kip bul-vla byz-gre byz-hun byz-rum dal-gz
+dal-sc dal-tib egy-syr eng-fra eng-ger fra-ger fra-ita gan-ker gan-nai gan-ong gan-sc gan-uig gan-xia geo-kip
+geo-rum ger-hun ger-ita ger-pol gha-ind gha-kas gha-kho gha-sam gre-hun gz-sc gz-song gz-sy hn-kor hn-ly
+hn-tat hun-ita hun-kie hun-pol ind-kas ind-tib ira-irq ira-kho irq-syr ita-syr jpe-jpw jpe-osh jpw-kyu jz-ly
+jz-ong jz-tat jz-ty kas-sam kas-uig kaz-khw kaz-sam ker-kiy ker-mer ker-nai ker-ong kf-song kf-sy kf-ty
+kho-khw kho-sam khw-sam kie-kip kie-nov kie-pol kie-vla kip-vla kiy-mer kiy-ong kiy-tat kor-kyu kor-ly
+kyu-song ly-tat mer-nai nai-uig nov-vla ong-tat ong-ty ong-xia rum-syr sc-sy sc-tib sc-xia song-sy sy-ty
+sy-xia ty-xia
+`.trim().split(/\s+/).map((s) => s.split('-'));
 
 // 勢力: id, 名称, 色, 文化, 首都, 領地, 好戦度
 const N = (id, name, color, culture, provinces, aggro = 0.5) => ({ id, name, color, culture, provinces, capital: provinces[0], aggro });
@@ -366,7 +364,7 @@ export const FORMATIONS = {
   choda:    { name: '長蛇', desc: '素早く動く縦長の陣。移動+1・防御-5%', move: 1, def: 0.95 },
 };
 
-// 海を渡る経路（EXTRA_LINKS のうち海峡・海路のもの）
+// 海を渡る経路（ADJACENCY のうち海峡・海路のもの）
 export const SEA_LINKS = [['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw'], ['song', 'kyu'], ['ita', 'syr']];
 
 export const SEASON_FARM = [0.6, 1.0, 2.0, 0.4];
