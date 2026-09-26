@@ -78,7 +78,7 @@ export class CityView {
   rebuild(full = false) {
     const st = this.state, p = st.provinces[this.pid], def = PROV_DEF[this.pid];
     const owner = p.owner;
-    this.style = owner ? CULTURES[NATION_DEF[owner].culture].style : 'nomad';
+    this.style = owner ? CULTURES[st.nations[owner].culture].style : 'nomad';
     this.color = owner ? new THREE.Color(st.nations[owner].color).getHex() : 0x999999;
     const season = st.season;
     if (full || this.builtFor !== `${this.pid}|${season}|${owner}`) {

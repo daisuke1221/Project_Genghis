@@ -250,7 +250,7 @@ export function saveLoadDialog(app, mode) {
             let meta = null;
             try { meta = JSON.parse(localStorage.getItem(`${SAVE_PREFIX}${s}.meta`) || 'null'); } catch { meta = null; }
             const canSave = mode !== 'load' && s !== 'auto' && app.st;
-            return `<tr><td>${s === 'auto' ? '自動' : `記録${s}`}</td><td>${meta ? `${esc(meta.nation)}・${esc(meta.date)}・${meta.provs}地方` : '<span class="muted">なし</span>'}</td>
+            return `<tr><td>${s === 'auto' ? '自動' : `記録${s}`}</td><td>${meta ? `${meta.scenario ? `「${esc(meta.scenario)}」` : ''}${esc(meta.nation)}・${esc(meta.date)}・${meta.provs}地方` : '<span class="muted">なし</span>'}</td>
               <td class="row">${canSave ? `<button class="btn small" data-save="${s}">保存</button>` : ''}${meta ? `<button class="btn small" data-load="${s}">読込</button>` : ''}</td></tr>`;
           }).join('')}</table><p class="muted">記録はこのブラウザ内（localStorage）に保存されます。毎ターン自動保存されます。</p>`;
       };
@@ -295,6 +295,8 @@ export function helpDialog() {
     width: '720px',
     body: `<div class="help">
       <p>12世紀末のユーラシア。35の勢力が割拠する中から一つを選び、内政と合戦で領土を広げ、全${PROVINCES.length}地方の${Math.round(VICTORY_SHARE * 100)}%（${Math.ceil(PROVINCES.length * VICTORY_SHARE)}地方）を支配すれば勝利です。1ターンは1季節（春夏秋冬）。</p>
+      <h3>シナリオ</h3>
+      <ul><li>1189年「蒼き狼の目覚め」、1206年「大モンゴル国の成立」、1219年「西方大遠征」の3本。開始年によって勢力の版図・君主・登場人物が変わり、すでに世を去った人物は登場しません。</li></ul>
       <h3>地図</h3>
       <ul><li>地方をクリックして選択。右側のパネルから命令を出します。</li><li>ドラッグで移動、右ドラッグで回転、ホイールで拡大縮小。</li><li>「ターン終了」で季節が進み、他の勢力が行動します（Ctrl+Enter）。</li></ul>
       <h3>箱庭（内政）</h3>
