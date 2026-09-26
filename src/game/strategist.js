@@ -194,7 +194,8 @@ export function strategistAdvice(st, nid) {
     if (c.loyalty < 35) add(58, `${PROV_DEF[p.id].city}の民が不満を募らせています（民忠${c.loyalty}）。反乱に注意を。`);
   }
   const soldiers = Object.values(st.generals).filter((g) => g.alive && g.nation === nid).reduce((a, g) => a + (g.unit?.soldiers ?? 0), 0);
-  if (nat.food < soldiers * 0.25 && (st.season === 3 || st.season === 0)) add(70, '兵糧が心もとありません。秋の収穫まで持たないかもしれません。');
+  const net = (nat.lastIncome?.food ?? 0) - soldiers * 0.1;
+  if (net < 0 && nat.food < -net * 3) add(70, `兵糧が心もとありません。このままでは${Math.max(1, Math.floor(nat.food / -net))}季ほどで尽きます。`);
   const n = 1 + Math.floor(s.pol / 30);
   const seen = new Set();
   const lines = items.sort((a, b) => b.pri - a.pri).filter((x) => !seen.has(x.text) && seen.add(x.text)).slice(0, n).map((x) => x.text);

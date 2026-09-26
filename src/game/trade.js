@@ -1,5 +1,6 @@
 // 特産品交易：各都市の特産品の生産・備蓄、距離と季節で変わる相場、隊商による交易路
 import { GOODS, PROVINCES } from './data.js';
+import { hasPact } from './statecraft.js';
 import { NEIGHBORS } from './geo.js';
 import { rrange, chance } from './rng.js';
 import { techBonus } from './tech.js';
@@ -105,8 +106,9 @@ export function routeQuote(st, nid, from, to, qtyOverride) {
   const retQty = retGood !== outGood && retSell > retBuy ? Math.round(cap / 2) : 0;
   const retProfit = retQty * (retSell - retBuy);
   const foreign = st.provinces[to].owner !== nid;
-  const tariff = foreign ? Math.round(outRevenue * 0.1) : 0;
-  const bonus = 1 + techBonus(st, from).trade;
+  const pact = foreign && hasPact(st, nid, st.provinces[to].owner);
+  const tariff = foreign && !pact ? Math.round(outRevenue * 0.1) : 0;
+  const bonus = 1 + techBonus(st, from).trade + (pact ? 0.1 : 0);
   const cost = ROUTE_UPKEEP + 3 * dist;
   const profit = Math.round((outRevenue + retProfit) * bonus - tariff - cost);
   return {

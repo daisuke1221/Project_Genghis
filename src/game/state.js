@@ -8,6 +8,7 @@ import { initRoyals, setRoyalHooks } from './royal.js';
 import { initTechs, setTechNamer } from './tech.js';
 import { initMarket } from './trade.js';
 import { ensurePersonnel, initPersonnel, rankCapMul } from './personnel.js';
+import { initStatecraft } from './statecraft.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
@@ -142,6 +143,7 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
       h.b.level += 1;
     }
   }
+  initStatecraft(st);
   initRoyals(st, consorts, princesses);
   initTechs(st);
   initMarket(st);
@@ -198,10 +200,10 @@ export function nationProvinces(st, nid) {
   return Object.values(st.provinces).filter((p) => p.owner === nid);
 }
 export function nationGenerals(st, nid, activeOnly = true) {
-  return Object.values(st.generals).filter((g) => g.nation === nid && g.alive && !g.captiveOf && (!activeOnly || age(st, g) >= 15));
+  return Object.values(st.generals).filter((g) => g.nation === nid && g.alive && !g.captiveOf && !g.hostageOf && (!activeOnly || age(st, g) >= 15));
 }
 export function generalsIn(st, pid, nid) {
-  return Object.values(st.generals).filter((g) => g.province === pid && g.alive && !g.captiveOf && age(st, g) >= 15 && (nid === undefined || g.nation === nid));
+  return Object.values(st.generals).filter((g) => g.province === pid && g.alive && !g.captiveOf && !g.hostageOf && age(st, g) >= 15 && (nid === undefined || g.nation === nid));
 }
 export function roninIn(st, pid) {
   return Object.values(st.generals).filter((g) => g.province === pid && g.alive && !g.nation && age(st, g) >= 15);

@@ -9,7 +9,12 @@ import {
   demandVassal, declareIndependence, annexChance, annexVassal, hegemon, areNeighbors, TRIBUTE_RATE,
 } from '../game/diplomacy.js';
 import { handleCalls } from '../game/actions.js';
+import { adjustRelation } from '../game/military.js';
 import { chanceText, strategistOf, discordChance, discordAvailable, sowDiscord, DISCORD_COST } from '../game/strategist.js';
+import {
+  PERSONALITIES, personality, bonds, trustOf, hasPact, pactChance, proposePact, endPact, tributeChance, signTribute, tributeInfo,
+  candidateHostages, hostagesFrom, hostageBonus, tradeableProvinces, dealChance, dealCheck, proposeDeal, mood, isRival,
+} from '../game/statecraft.js';
 
 const pct = (p) => `${Math.round(p * 100)}%`;
 
@@ -31,6 +36,7 @@ export function diplomacyDialog(app, focus) {
         let html = '';
         if (heg === me) html += '<div class="dip-warn">貴国は覇権国と見なされています。周辺国は包囲網を結び、友好度は下がり続けます。</div>';
         else if (heg) html += `<div class="dip-note">${esc(st.nations[heg].name)}が覇権を握りつつあります。周辺国は包囲網を結ぼうとしています。</div>`;
+        html += `<div class="muted" style="margin-bottom:4px">貴国の信用：<b class="${trustOf(st, me) >= 60 ? 'pos' : trustOf(st, me) < 40 ? 'neg' : ''}">${trustOf(st, me)}</b>（条約を守り、参戦要請に応じると上がる。条約を破ると大きく下がり、各国が交渉に応じにくくなる）</div>`;
         if (lord) html += `<div class="dip-note">貴国は${esc(st.nations[lord].name)}の従属国です（収入の${pct(TRIBUTE_RATE)}を朝貢）。</div>`;
         html += '<div class="dip-wrap"><div class="dip-list"><table class="list">';
         for (const n of list) {
@@ -38,7 +44,7 @@ export function diplomacyDialog(app, focus) {
           const lab = treatyLabel(st, me, n.id);
           const cls = atWar(st, me, n.id) ? 'neg' : treaty(st, me, n.id) ? 'pos' : 'muted';
           html += `<tr class="clickable ${n.id === sel ? 'sel' : ''}" data-n="${n.id}"><td><span class="swatch" style="background:${n.color}"></span>${n.name}${areNeighbors(st, me, n.id) ? '' : '<span class="muted">・遠</span>'}</td>
-            <td class="${rel >= 0 ? 'pos' : 'neg'}" style="text-align:right">${rel}</td><td class="${cls}">${lab}</td></tr>`;
+            <td class="${rel >= 0 ? 'pos' : 'neg'}" style="text-align:right">${rel}</td><td class="${cls}">${lab}${hasPact(st, me, n.id) ? ' <span class="pos" title="通商条約">商</span>' : ''}${isRival(me, n.id) ? ' <span class="neg" title="宿敵">仇</span>' : ''}</td></tr>`;
         }
         html += '</table></div><div class="dip-detail">';
         if (sel) html += detail(sel, myPow);
@@ -62,6 +68,11 @@ export function diplomacyDialog(app, focus) {
             <span>領地／兵力</span><span>${nationProvinces(st, nid).length}地方・${fmt(nationSoldiers(st, nid))}（${pow > myPow * 1.3 ? '<span class="neg">強</span>' : pow < myPow * 0.7 ? '<span class="pos">弱</span>' : '互角'}）</span>
             <span>友好度</span><span><span class="${rel >= 0 ? 'pos' : 'neg'}">${rel}</span>${statBar(rel + 100, 200, rel >= 0 ? '#7fbf5a' : '#d35a4a')}</span>
             <span>関係</span><span>${treatyLabel(st, me, nid)}${tr === 'truce' ? `（残り${st.nations[me].treaties[nid].until - st.turn}季）` : ''}</span>
+            <span>君主の気質</span><span title="${esc(PERSONALITIES[personality(st, nid)].desc)}">${PERSONALITIES[personality(st, nid)].name}<span class="muted small">（${esc(PERSONALITIES[personality(st, nid)].desc)}）</span></span>
+            <span>因縁</span><span>${bonds(st, nid, me).map(([l, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${l}</span>`).join('・') || '―'}</span>
+            <span>信用</span><span>${trustOf(st, nid)}</span>
+            <span>通商</span><span>${hasPact(st, me, nid) ? '<span class="pos">通商条約あり（関税なし・交易+10%）</span>' : '―'}</span>
+            ${hostagesFrom(st, me, nid).length || hostagesFrom(st, nid, me).length ? `<span>人質</span><span>${[...hostagesFrom(st, me, nid).map((g) => `差し出し：${esc(g.name)}`), ...hostagesFrom(st, nid, me).map((g) => `預かり：${esc(g.name)}`)].join('、')}</span>` : ''}
             <span>味方</span><span>${theirFriends.join('、') || '―'}</span>
             <span>交戦中</span><span>${theirEnemies.join('、') || '―'}</span>
             ${vassalsOf(st, nid).length ? `<span>従属国</span><span>${vassalsOf(st, nid).map((v) => st.nations[v].name).join('、')}</span>` : ''}
@@ -91,8 +102,15 @@ export function diplomacyDialog(app, focus) {
         } else {
           h += '<div class="sect"><b>条約</b><div class="row">';
           if (!tr) {
-            h += btn('alliance', '同盟を申し込む', acceptChance(st, nid, me, 'alliance'));
-            h += btn('truce', '不可侵（停戦）を結ぶ', acceptChance(st, nid, me, 'truce'));
+            const hs = candidateHostages(st, me);
+            if (hostageId && !hs.some((g) => g.id === hostageId)) hostageId = null;
+            const hg = hostageId ? st.generals[hostageId] : null;
+            h += btn('alliance', '同盟を申し込む', acceptChance(st, nid, me, 'alliance', hg));
+            h += btn('truce', '不可侵（停戦）を結ぶ', acceptChance(st, nid, me, 'truce', hg));
+            const tc = tributeChance(st, me, nid);
+            h += btn('tribute', '朝貢を要求する', tc, '', tc <= 0);
+            h += `</div><div class="row" style="margin-top:4px"><span class="muted">人質を添える：</span><select data-hostage><option value="">なし</option>${hs.map((g) => `<option value="${g.id}" ${g.id === hostageId ? 'selected' : ''}>${esc(g.name)}${g.family ? '（一門）' : ''}</option>`).join('')}</select>
+              <span class="muted small">受諾されやすくなる（一門ほど効果大）。こちらが条約を破ると人質は処断される</span>`;
           } else if (tr === 'vassal' && lordOf(st, me) === nid) {
             h += btn('independence', '独立を宣言する（開戦）');
           } else if (tr === 'vassal') {
@@ -101,9 +119,26 @@ export function diplomacyDialog(app, focus) {
             h += btn('release', '従属から解放する');
             if (ap <= 0) h += '<span class="muted">併合には従属3年以上・3地方以下・良好な関係が必要</span>';
           } else {
-            h += btn('break', `${tr === 'alliance' ? '同盟' : '停戦'}を破棄する`);
+            h += btn('break', `${{ alliance: '同盟', truce: '停戦', tribute: tributeInfo(st, me, nid)?.payer === me ? '朝貢（をやめる）' : '朝貢関係' }[tr]}を破棄する`);
           }
-          h += '</div></div>';
+          h += '</div>';
+          h += `<div class="row" style="margin-top:4px">${hasPact(st, me, nid) ? btn('endpact', '通商条約を破棄する') : btn('pact', '通商条約を結ぶ', pactChance(st, nid, me))}<span class="muted small">通商条約：互いの関税なし・交易の利益+10%・友好度が毎季上がる</span></div>`;
+          h += '</div>';
+          // 取引
+          const mine = tradeableProvinces(st, me, nid), theirs = tradeableProvinces(st, nid, me);
+          const opt = (list, cur, fmtf) => list.map((v) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${fmtf(v)}</option>`).join('');
+          const golds = [0, 300, 500, 1000, 2000, 3000, 5000], horses = [0, 500, 1000, 2000, 4000];
+          const dc = dealCheck(st, me, nid, deal);
+          h += `<div class="sect"><b>取引</b> <span class="muted">金・馬・地方をやり取りする（地方は相手と接する首都以外）</span>
+            <div class="deal"><div><b>渡す</b><br>
+              金<select data-deal="give.gold">${opt(golds, deal.give.gold ?? 0, fmt)}</select>
+              馬<select data-deal="give.horses">${opt(horses, deal.give.horses ?? 0, fmt)}</select>
+              地方<select data-deal="give.province"><option value="">なし</option>${opt(mine, deal.give.province ?? '', (p) => PROV_DEF[p].city)}</select></div>
+            <div><b>求める</b><br>
+              金<select data-deal="get.gold">${opt(golds, deal.get.gold ?? 0, fmt)}</select>
+              馬<select data-deal="get.horses">${opt(horses, deal.get.horses ?? 0, fmt)}</select>
+              地方<select data-deal="get.province"><option value="">なし</option>${opt(theirs, deal.get.province ?? '', (p) => PROV_DEF[p].city)}</select></div></div>
+            <div class="row">${btn('deal', '取引を持ちかける', dc.ok ? dealChance(st, me, nid, deal) : undefined, '', !dc.ok)}${dc.ok ? '' : `<span class="muted">${esc(dc.reason)}</span>`}</div></div>`;
           if (tr === 'alliance') {
             const asks = myEnemies.filter((e) => !atWar(st, nid, e) && e !== nid && treaty(st, nid, e) !== 'alliance');
             h += `<div class="sect"><b>参戦要請</b> ${asks.length ? `<div class="row">${asks.map((e) => btn('call', `${st.nations[e].name}との戦いに参戦を求める`, callChance(nid, e), `data-e="${e}"`)).join('')}</div>` : '<span class="muted">要請できる戦争はありません</span>'}
@@ -129,6 +164,8 @@ export function diplomacyDialog(app, focus) {
         return h;
       };
       let discordWith = null;
+      let hostageId = null;
+      let deal = { give: {}, get: {} };
 
       const callChance = (ally, enemy) => Math.max(0.05, Math.min(0.9, 0.3 + relation(st, ally, me) / 120 - (nationPower(st, enemy) > nationPower(st, ally) * 1.5 ? 0.2 : 0)));
       const once = (key) => {
@@ -144,11 +181,16 @@ export function diplomacyDialog(app, focus) {
         if (e.target.dataset.gold !== undefined) terms.gold = Number(e.target.value);
         if (e.target.dataset.prov !== undefined) terms.province = e.target.value;
         if (e.target.dataset.discord !== undefined) discordWith = e.target.value;
+        if (e.target.dataset.hostage !== undefined) hostageId = e.target.value || null;
+        if (e.target.dataset.deal) {
+          const [side, k] = e.target.dataset.deal.split('.');
+          deal[side][k] = k === 'province' ? (e.target.value || null) : Number(e.target.value);
+        }
         render();
       };
       el.onclick = async (e) => {
         const row = e.target.closest('[data-n]');
-        if (row) { sel = row.dataset.n; terms = { kind: 'white', gold: 500, province: null }; audio.sfx('click'); render(); return; }
+        if (row) { sel = row.dataset.n; terms = { kind: 'white', gold: 500, province: null }; deal = { give: {}, get: {} }; audio.sfx('click'); render(); return; }
         const b = e.target.closest('[data-a]');
         if (!b || b.disabled) return;
         const a = b.dataset.a, nid = sel, name = st.nations[nid].name;
@@ -165,8 +207,33 @@ export function diplomacyDialog(app, focus) {
             break;
           case 'alliance': case 'truce':
             if (!once(`${a}:${nid}`)) break;
-            r = propose(st, me, nid, a);
-            toast(r.ok ? `${name}は${a === 'alliance' ? '同盟' : '不可侵'}を受け入れた！` : `${name}に断られた…`);
+            r = propose(st, me, nid, a, hostageId);
+            toast(r.ok ? `${name}は${a === 'alliance' ? '同盟' : '不可侵'}を受け入れた！${hostageId ? '（人質を送った）' : ''}` : `${name}に断られた…`);
+            if (r.ok) hostageId = null;
+            break;
+          case 'tribute':
+            if (!once(`tribute:${nid}`)) break;
+            if (chance(st, tributeChance(st, me, nid))) { signTribute(st, me, nid); toast(`${name}は朝貢を受け入れた！`); audio.sfx('coin'); }
+            else {
+              adjustRelation(st, me, nid, -15);
+              toast(`${name}は朝貢を拒んだ`);
+            }
+            break;
+          case 'pact':
+            if (!once(`pact:${nid}`)) break;
+            r = proposePact(st, me, nid);
+            toast(r.ok ? `${name}と通商条約を結んだ！` : `${name}に断られた…`);
+            break;
+          case 'endpact':
+            if (await confirmBox('通商条約の破棄', `${name}との通商条約を破棄しますか？（信用が少し下がります）`)) endPact(st, me, nid);
+            break;
+          case 'deal':
+            if (!once(`deal:${nid}`)) break;
+            r = proposeDeal(st, me, nid, deal);
+            if (!r.ok) toast(r.reason);
+            else if (r.accepted) { toast(`${name}との取引が成立した！`); audio.sfx('coin'); deal = { give: {}, get: {} }; }
+            else toast(`${name}は取引に応じなかった…`);
+            app.renderTopbar();
             break;
           case 'break':
             if (await confirmBox('条約破棄', `${name}との条約を破棄しますか？（他国からの信用も失います）`)) breakTreaty(st, me, nid);

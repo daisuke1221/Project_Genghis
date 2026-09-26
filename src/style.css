@@ -243,3 +243,8 @@ table.list th.clickable { cursor: pointer; }
 #advice .adv-head { color: #c9a0ff; font-weight: 700; }
 #advice .adv-line { margin-top: 3px; }
 @media (max-width: 900px) { #advice { width: 240px; font-size: 12px; } }
+
+/* 取引 */
+.deal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }
+.deal select { margin: 2px 4px 2px 2px; }
+@media (max-width: 700px) { .deal { grid-template-columns: 1fr; } }

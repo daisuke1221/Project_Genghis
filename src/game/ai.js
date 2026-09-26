@@ -17,6 +17,7 @@ import { aiSieges } from './siege.js';
 import { aiAdmin } from './admin.js';
 import { aiSubvert } from './personnel.js';
 import { aiStrategist } from './strategist.js';
+import { signPact, signTribute, joinSummit } from './statecraft.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -24,7 +25,23 @@ export async function aiNationTurn(st, nid, hooks = {}) {
 
   // 外交
   for (const pr of aiDiplomacy(st, nid)) {
+    if (pr.kind === 'calls') { await handleCalls(st, pr.calls, hooks); continue; }
     const ok = hooks.proposal ? await hooks.proposal(pr) : false;
+    if (pr.kind === 'gift') continue;
+    if (pr.kind === 'pact') { if (ok) signPact(st, pr.from, st.playerNation); else adjustRelation(st, pr.from, st.playerNation, -3); continue; }
+    if (pr.kind === 'tribute') {
+      if (ok) signTribute(st, pr.from, st.playerNation);
+      else {
+        adjustRelation(st, pr.from, st.playerNation, -15);
+        if (chance(st, 0.6)) await handleCalls(st, declareWar(st, pr.from, st.playerNation, { reason: '（朝貢を拒まれて）' }), hooks);
+      }
+      continue;
+    }
+    if (pr.kind === 'summit') {
+      if (ok) joinSummit(st, st.playerNation, pr.members, pr.against, sign);
+      else for (const m of pr.members) adjustRelation(st, m, st.playerNation, -10);
+      continue;
+    }
     if (ok && pr.kind === 'marriage') {
       const p = st.princesses[pr.princess];
       if (p && !p.married) {
