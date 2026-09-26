@@ -142,3 +142,45 @@ describe('婚姻の重み', () => {
     expect(st.nations.kiyat.relations.kereit).toBe(r0 + 1);
   });
 });
+
+import { destroyNation } from '../src/game/military.js';
+import { widows, takeWidow } from '../src/game/royal.js';
+import { brideCandidates, takeDomesticBride, vassalBrideCandidates, marryVassalDaughter } from '../src/game/court.js';
+
+describe('妃を迎える', () => {
+  it('a bride from a domestic noble house costs gold', () => {
+    const st = game();
+    st.nations.kiyat.gold = 1000;
+    const r = st.nations.kiyat.rulerId;
+    const n0 = consortsOf(st, r).length;
+    const c = brideCandidates(st, 'kiyat')[0];
+    expect(takeDomesticBride(st, 'kiyat', c.id).ok).toBe(true);
+    expect(consortsOf(st, r).length).toBe(n0 + 1);
+    expect(st.nations.kiyat.gold).toBe(700);
+    expect(brideCandidates(st, 'kiyat').length).toBe(1);
+  });
+
+  it("marrying a vassal's daughter makes him an in-law, once a year", () => {
+    const st = game();
+    st.nations.kiyat.gold = 1000;
+    const v = vassalBrideCandidates(st, 'kiyat')[0] ?? (() => { const g = find(st, 'ボオルチュ'); g.birth = st.year - 40; g.family = false; return g; })();
+    const res = marryVassalDaughter(st, 'kiyat', v.id);
+    expect(res.ok).toBe(true);
+    expect(loyaltyTarget(st, v).items.some(([l]) => l === '外戚')).toBe(true);
+    const other = vassalBrideCandidates(st, 'kiyat')[0];
+    if (other) expect(marryVassalDaughter(st, 'kiyat', other.id).ok).toBe(false);
+  });
+
+  it('consorts of a fallen nation can be taken as widows', () => {
+    const st = game();
+    const tr = st.nations.tatar.rulerId;
+    const c = consortsOf(st, tr)[0];
+    if (!c) return;
+    c.birth = st.year - 25;
+    destroyNation(st, 'tatar', 'kiyat');
+    expect(widows(st)).toContain(c);
+    expect(takeWidow(st, c.id, 'kiyat').ok).toBe(true);
+    expect(c.husband).toBe(st.nations.kiyat.rulerId);
+    expect(c.affection).toBe(30);
+  });
+});

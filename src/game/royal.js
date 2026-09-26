@@ -1,7 +1,7 @@
 // 後宮・王族：妃と寵愛、子の誕生、姫の婚姻（婚姻同盟・家臣への降嫁）、縁談
 import { FEMALE_NAMES, NAMED_CONSORTS, NAMED_PRINCESSES, FEMALE_GENERALS, NAME_POOLS, CULTURES } from './data.js';
 import { rint, pick, chance } from './rng.js';
-import { consortTrait, chiefOf } from './court.js';
+import { consortTrait, chiefOf, setCourtRoyalHooks } from './court.js';
 
 let hooks = { addGeneral: null, randomName: null, log: null, sign: null, relation: null };
 export function setRoyalHooks(h) { hooks = { ...hooks, ...h }; }
@@ -179,6 +179,12 @@ export function royalTick(st) {
       }
     }
     for (const p of Object.values(st.princesses)) if (p.alive && age(st, p) > 60 && chance(st, (age(st, p) - 60) / 50)) p.alive = false;
+    // AIの君主は未亡人を迎えることがある
+    for (const c of widows(st)) {
+      const cands = Object.values(st.nations).filter((n) => n.alive && n.id !== st.playerNation && !isFemaleRuler(st, n.id) && consortsOf(st, n.rulerId).length < 2 && age(st, st.generals[n.rulerId]) < 60);
+      if (cands.length && chance(st, 0.25)) takeWidow(st, c.id, pick(st, cands).id);
+      else if (age(st, c) > 45) c.alive = false;
+    }
     // AIの君主は妃がいなければ国内から迎える
     for (const n of Object.values(st.nations)) {
       if (!n.alive || n.id === st.playerNation || isFemaleRuler(st, n.id)) continue;
@@ -284,10 +290,33 @@ export function adoptOrphan(st, pid, nid) {
   return { ok: true };
 }
 
-// 滅亡時：妃・姫は身寄りを失う
+// 滅亡時：妃・姫は身寄りを失う。若い妃は未亡人として残り、他国の君主に迎えられることがある
 export function orphanNation(st, nid) {
   for (const p of Object.values(st.princesses)) if (p.nation === nid && !p.married) p.nation = null;
-  for (const c of Object.values(st.consorts)) if (c.nation === nid) c.alive = false;
+  for (const c of Object.values(st.consorts)) {
+    if (c.nation !== nid || !c.alive) continue;
+    if (age(st, c) <= 40) {
+      c.widow = true; c.formerNation = nid; c.formerName = st.nations[nid]?.name ?? '';
+      c.nation = null; c.husband = null; c.chief = false;
+    } else c.alive = false;
+  }
+}
+export function widows(st) {
+  return Object.values(st.consorts).filter((c) => c.alive && c.widow && !c.husband);
+}
+// 滅びた国の妃を迎える（恨みを抱いているので寵愛は低いところから）
+export function takeWidow(st, cid, nid) {
+  const c = st.consorts[cid];
+  const r = st.generals[st.nations[nid]?.rulerId];
+  if (!c?.alive || !c.widow || c.husband || !r || r.female) return { ok: false, reason: '迎えられません' };
+  c.widow = false;
+  c.husband = r.id;
+  c.nation = nid;
+  c.origin = c.formerNation;
+  c.affection = 30;
+  c.visited = -1;
+  hooks.log?.(st, `滅びた${c.formerName}の妃であった${c.name}が、${st.nations[nid].name}の${r.name}の妃に迎えられた。`, nid === st.playerNation);
+  return { ok: true };
 }
 
 // AI同士の縁談（外交の一環）
@@ -302,3 +331,5 @@ export function aiMarriage(st, nid, neighbors) {
   return null;
 }
 
+
+setCourtRoyalHooks({ addConsort, femaleName });

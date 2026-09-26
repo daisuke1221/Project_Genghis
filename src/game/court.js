@@ -1,5 +1,5 @@
 // 宮廷：妃の個性、正室と側室、嫡子と庶子、後継者の指名と跡目争い、傅役と教育、封地、婚姻の重み、後宮の出来事
-import { chance, pick } from './rng.js';
+import { chance, pick, rint } from './rng.js';
 import { NEIGHBORS } from './geo.js';
 import { PROV_DEF, log, nationProvinces } from './state.js';
 import { hasTrait, triggerRebellion, setCourtHooks } from './personnel.js';
@@ -274,3 +274,70 @@ function adjustRel(st, a, b, d) {
 }
 
 setCourtHooks({ chiefOf, consortTrait });
+
+// ---------- 国内から妃を迎える ----------
+export const DOMESTIC_BRIDE_COST = 300;
+export const VASSAL_BRIDE_COST = 100;
+// 名家の娘の候補（毎年入れ替わる）
+export function brideCandidates(st, nid) {
+  st.brides ??= {};
+  const cur = st.brides[nid];
+  if (cur && cur.year === st.year) return cur.list;
+  const n = st.nations[nid];
+  const list = [];
+  for (let i = 0; i < 2; i++) {
+    const cha = rint(st, 40, 90), pol = rint(st, 30, 85);
+    const c = { id: `${st.year}-${i}`, name: royalHooks.femaleName(st, n.culture), birth: st.year - rint(st, 15, 22), cha, pol };
+    c.trait = TRAIT_KEYS[rint(st, 0, TRAIT_KEYS.length - 1)];
+    list.push(c);
+  }
+  st.brides[nid] = { year: st.year, list };
+  return list;
+}
+function canWed(st, nid) {
+  const r = st.generals[st.nations[nid]?.rulerId];
+  if (!r || r.female) return { ok: false, reason: '女王は妃を迎えられません' };
+  return { ok: true, r };
+}
+export function takeDomesticBride(st, nid, candId) {
+  const w = canWed(st, nid);
+  if (!w.ok) return w;
+  const n = st.nations[nid];
+  const list = brideCandidates(st, nid);
+  const c = list.find((x) => x.id === candId);
+  if (!c) return { ok: false, reason: 'その縁組はもうありません' };
+  if (n.gold < DOMESTIC_BRIDE_COST) return { ok: false, reason: '金が足りません' };
+  n.gold -= DOMESTIC_BRIDE_COST;
+  const cons = royalHooks.addConsort(st, { name: c.name, nation: nid, husband: w.r.id, birth: c.birth, cha: c.cha, pol: c.pol, affection: 55 });
+  cons.trait = c.trait;
+  st.brides[nid].list = list.filter((x) => x !== c);
+  log(st, `国内の名家から${c.name}が${w.r.name}の妃に迎えられた。`, nid === st.playerNation);
+  return { ok: true, consort: cons };
+}
+// 家臣の娘を娶る：その家臣は外戚となり忠誠が上がる（年に一度）
+export function vassalBrideCandidates(st, nid) {
+  const n = st.nations[nid];
+  return Object.values(st.generals).filter((g) => g.alive && g.nation === nid && g.id !== n.rulerId && !g.family && !g.inlaw && st.year - g.birth >= 32 && !g.captiveOf && !g.hostageOf);
+}
+export function marryVassalDaughter(st, nid, gid) {
+  const w = canWed(st, nid);
+  if (!w.ok) return w;
+  const n = st.nations[nid];
+  const g = st.generals[gid];
+  if (!vassalBrideCandidates(st, nid).includes(g)) return { ok: false, reason: 'その家臣には嫁がせられる娘がいません' };
+  if (n.vassalBrideYear === st.year) return { ok: false, reason: '家臣の娘を娶るのは年に一度です' };
+  if (n.gold < VASSAL_BRIDE_COST) return { ok: false, reason: '金が足りません' };
+  n.gold -= VASSAL_BRIDE_COST;
+  n.vassalBrideYear = st.year;
+  const cha = Math.round((g.cha + rint(st, 30, 90)) / 2), pol = Math.round((g.pol + rint(st, 30, 90)) / 2);
+  const cons = royalHooks.addConsort(st, { name: royalHooks.femaleName(st, n.culture), nation: nid, husband: w.r.id, birth: st.year - rint(st, 15, 22), cha, pol, affection: 50 });
+  cons.fatherGen = g.id;
+  g.inlaw = cons.id;
+  g.loyalty = Math.min(100, g.loyalty + 20);
+  log(st, `${g.name}の娘${cons.name}が${w.r.name}の妃となった。${g.name}は外戚として重んじられる。`, nid === st.playerNation);
+  return { ok: true, consort: cons };
+}
+export const isInlaw = (st, g) => !!(g.inlaw && st.consorts?.[g.inlaw]?.alive && st.consorts[g.inlaw].nation === g.nation);
+
+const royalHooks = {};
+export function setCourtRoyalHooks(h) { Object.assign(royalHooks, h); }
