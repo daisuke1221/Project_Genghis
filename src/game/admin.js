@@ -92,6 +92,7 @@ export function adminMods(st, pid) {
     if (barracks) order.push(['兵舎', barracks * 4]);
     order.push(gov ? ['太守の武力', Math.round((gov.war - 50) / 5)] : ['太守不在', -5]);
     if (gov && hasTrait(gov, 'benevolent')) loyalty.push(['太守の仁政', 5]);
+    if (gov?.fief === pid && gov.family) loyalty.push(['王族の封地', 6]);
     order.push(['民忠', Math.round((c.loyalty - 50) / 4)]);
     if (T.order) order.push([T.name, T.order]);
     if (st.sieges?.[pid]) order.push(['包囲', -15]);

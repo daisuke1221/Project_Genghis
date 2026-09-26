@@ -227,6 +227,11 @@ export function loyaltyTarget(st, g) {
   if (hasTrait(g, 'loyal')) items.push(['忠義', 15]);
   if (hasTrait(g, 'ambitious')) items.push(['野心', -12]);
   if (nat && nat.gold <= 0) items.push(['俸給の遅れ', -10]);
+  if (g.family) items.push(['一門', 25]);
+  if (g.fief && st.provinces[g.fief]?.owner === g.nation) items.push(['封地', 5]);
+  if (g.inlaw && st.consorts?.[g.inlaw]?.alive && st.consorts[g.inlaw].nation === g.nation) items.push(['外戚', 12]);
+  const chief = r && courtHooks.chiefOf ? courtHooks.chiefOf(st, r.id) : null;
+  if (chief && chief.affection >= 50 && courtHooks.consortTrait?.(chief) === 'wise' && !g.family) items.push([`賢妃${chief.name}の内助`, 3]);
   const target = Math.max(0, Math.min(100, items.reduce((s, [, v]) => s + v, 0)));
   return { target, items };
 }
@@ -239,7 +244,7 @@ export function personnelTick(st) {
     const nat = st.nations[g.nation];
     if (!nat?.alive) continue;
     if (hasTrait(g, 'drill') && g.unit?.soldiers > 0) g.unit.training = Math.min(100, g.unit.training + 4);
-    if (nat.rulerId === g.id || g.family) { g.loyalty = Math.max(g.loyalty, nat.rulerId === g.id ? 100 : 90); continue; }
+    if (nat.rulerId === g.id) { g.loyalty = 100; continue; }
     const t = loyaltyTarget(st, g).target;
     if (g.loyalty < t) g.loyalty += Math.min(2, t - g.loyalty);
     else if (g.loyalty > t) g.loyalty -= Math.min(3, g.loyalty - t);
@@ -279,7 +284,10 @@ export function rebelRisk(st, g) {
 }
 
 let rebelHook = null;
+const courtHooks = {};
+export function setCourtHooks(h) { Object.assign(courtHooks, h); }
 export function setRebelHook(fn) { rebelHook = fn; }
+export function triggerRebellion(st, g, pid, ids) { return rebelHook?.(st, g, pid, ids) ?? null; }
 
 function rebellions(st, nid, onLog) {
   for (const g of Object.values(st.generals)) {

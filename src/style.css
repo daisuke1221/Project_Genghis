@@ -260,3 +260,4 @@ table.list th.clickable { cursor: pointer; }
 .fm input { margin-right: 4px; }
 .fm span { display: block; }
 .fm.sel { background: rgba(212,169,74,.18); border-color: var(--gold); }
+.card select { max-width: 100%; }

@@ -6,7 +6,7 @@ import { TECH_TYPES, TECH_SALARY, TECH_SLOTS, PROVINCES, CULTURES, GOODS } from 
 import { PROV_DEF, nationProvinces, nationGenerals, ruler, age } from '../game/state.js';
 import {
   consortsOf, sonsOf, visit, giftConsort, birthChance, marriageable, marryToRuler, marryToVassal,
-  requestBride, requestChance, brideAcceptChance, orphans, becomeConsort, adoptOrphan, isFemaleRuler,
+  requestBride, requestChance, brideAcceptChance, orphans, becomeConsort, adoptOrphan, isFemaleRuler, widows, takeWidow,
 } from '../game/royal.js';
 import { chanceText } from '../game/strategist.js';
 
@@ -17,6 +17,12 @@ import {
   sellGoods, GOOD_NAMES, DIST,
 } from '../game/trade.js';
 import { cityYields } from '../game/city.js';
+import { TRAITS } from '../game/personnel.js';
+import {
+  CONSORT_TRAITS, consortTrait, chiefOf, setChief, isLegit, currentHeir, heirCandidates, designateHeir, EDU, TUTOR_FEE,
+  tutorCandidates, assignTutor, fiefCandidates, grantFief, brideCandidates, takeDomesticBride, vassalBrideCandidates, marryVassalDaughter,
+  DOMESTIC_BRIDE_COST, VASSAL_BRIDE_COST,
+} from '../game/court.js';
 import { areNeighbors } from '../game/diplomacy.js';
 
 const cultureOfNation = (st, nid) => st.nations[nid]?.culture ?? 'mongol';
@@ -47,20 +53,48 @@ export function haremDialog(app) {
           for (const c of cs) {
             const oc = c.origin ? cultureOfNation(st, c.origin) : culture;
             html += `<div class="card">${portrait(c, oc, c.origin ? st.nations[c.origin]?.color : nat.color)}
-              <div class="info"><b>${esc(c.name)}</b>（${age(st, c)}歳）<div class="muted">出身：${c.origin ? esc(st.nations[c.origin]?.name ?? '滅亡国') : '国内'}</div>
+              <div class="info"><b>${esc(c.name)}</b>（${age(st, c)}歳）<div class="muted">出身：${c.fatherGen ? `家臣${esc(st.generals[c.fatherGen]?.name ?? '')}の娘` : c.formerName ? `旧${esc(c.formerName)}の妃` : c.origin ? esc(st.nations[c.origin]?.name ?? '滅亡国') : '国内'}</div>
+              <div>${chiefOf(st, r.id) === c ? '<span class="role-tag">正室</span>' : '<span class="muted">側室</span>'} <span class="trait ${['schemer', 'jealous'].includes(consortTrait(c)) ? 'bad' : ['wise', 'virtuous', 'gentle'].includes(consortTrait(c)) ? 'good' : ''}" title="${esc(CONSORT_TRAITS[consortTrait(c)].desc)}">${CONSORT_TRAITS[consortTrait(c)].name}</span></div>
               <div class="muted">魅力${c.cha}・政治${c.pol}</div>
               <div>寵愛 ${c.affection}${statBar(c.affection, 100, '#e07a9a')}</div>
               <div class="row" style="margin-top:4px">
                 <button class="btn small" data-visit="${c.id}" ${c.visited === st.turn ? 'disabled' : ''}>${c.visited === st.turn ? '寵愛済み' : '寵愛する'}</button>
-                <button class="btn small" data-gift="${c.id}" ${nat.gold >= 100 ? '' : 'disabled'}>贈物（100金）</button></div></div></div>`;
+                <button class="btn small" data-gift="${c.id}" ${nat.gold >= 100 ? '' : 'disabled'}>贈物（100金）</button>
+                ${chiefOf(st, r.id) !== c ? `<button class="btn small" data-chief="${c.id}" title="正室の子が嫡子になります。退けられた正室は寵愛を失い、その子や実家は不満を抱きます">正室に立てる</button>` : ''}</div></div></div>`;
           }
           html += '</div>';
+          if (!female) {
+            const cands = brideCandidates(st, nid);
+            const vs = vassalBrideCandidates(st, nid).sort((a, b) => b.loyalty - a.loyalty);
+            html += `<h3>妃を迎える</h3>
+              <div class="sect"><b>国内の名家から</b> <span class="muted">（${DOMESTIC_BRIDE_COST}金・候補は毎年入れ替わる）</span>
+              ${cands.length ? `<table class="list">${cands.map((c) => `<tr><td>${esc(c.name)}（${st.year - c.birth}歳）</td><td>魅力${c.cha}・政治${c.pol}</td>
+                <td><span class="trait" title="${esc(CONSORT_TRAITS[c.trait].desc)}">${CONSORT_TRAITS[c.trait].name}</span></td>
+                <td><button class="btn small" data-domestic="${c.id}" ${nat.gold < DOMESTIC_BRIDE_COST ? 'disabled' : ''}>迎える</button></td></tr>`).join('')}</table>` : '<p class="muted">今年の縁組はもうありません。</p>'}</div>
+              <div class="sect"><b>家臣の娘を娶る</b> <span class="muted">（${VASSAL_BRIDE_COST}金・年に一度。その家臣は外戚となり忠誠が大きく上がる）</span>
+              ${vs.length ? `<div class="row"><select data-vassal-bride>${vs.map((g) => `<option value="${g.id}">${esc(g.name)}（${age(st, g)}歳・忠誠${g.loyalty}・政${g.pol} 魅${g.cha}）</option>`).join('')}</select>
+                <button class="btn small" data-vbride="1" ${nat.vassalBrideYear === st.year || nat.gold < VASSAL_BRIDE_COST ? 'disabled' : ''}>娶る</button>${nat.vassalBrideYear === st.year ? '<span class="muted">今年はすでに迎えた</span>' : ''}</div>` : '<p class="muted">娘を嫁がせられる家臣（32歳以上）がいません。</p>'}</div>
+              <p class="muted">他国の姫は「縁談」から、滅びた国の妃や姫も「縁談」の下から迎えられます。</p>`;
+          }
         } else if (tab === 'family') {
-          const sons = sonsOf(st, r.id);
+          const sons = sonsOf(st, r.id).filter((g) => st.year >= g.birth);
           const daughters = Object.values(st.princesses).filter((p) => p.alive && p.nation === nid && !p.married);
           const married = Object.values(st.princesses).filter((p) => p.alive && p.married && (p.nation === nid));
-          html += `<h3>男子</h3>${sons.length ? `<table class="list"><tr><th>名前</th><th>年齢</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>状態</th></tr>
-            ${sons.map((g) => `<tr><td>${esc(g.name)}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${age(st, g) >= 15 ? `出仕（${PROV_DEF[g.province]?.city ?? ''}）` : `元服まで${15 - age(st, g)}年`}</td></tr>`).join('')}</table>` : '<p class="muted">君主の男子はまだいません。</p>'}
+          const heir = currentHeir(st, nid);
+          const hc = heirCandidates(st, nid);
+          const tutors = tutorCandidates(st, nid);
+          const tutorSel = (x, kind) => `<select data-tutor="${kind}:${x.id}"><option value="">傅役なし</option>${[...(x.tutorId && st.generals[x.tutorId]?.alive ? [st.generals[x.tutorId]] : []), ...tutors].map((t) => `<option value="${t.id}" ${x.tutorId === t.id ? 'selected' : ''}>${esc(t.name)}（武${t.war} 統${t.lead} 政${t.pol} 魅${t.cha}）</option>`).join('')}</select>`;
+          const eduSel = (x, kind) => `<select data-edu="${kind}:${x.id}">${Object.entries(EDU).filter(([k]) => kind === 'g' || k === 'arts').map(([k, e]) => `<option value="${k}" ${(x.edu ?? (kind === 'g' ? 'balanced' : 'arts')) === k ? 'selected' : ''}>${e.name}</option>`).join('')}</select>`;
+          const fiefs = nationProvinces(st, nid).filter((p) => p.id !== nat.capital);
+          const fiefSel = (g) => `<select data-fief="${g.id}"><option value="">${g.fief ? `封地：${PROV_DEF[g.fief]?.city}` : '封地を与える…'}</option>${fiefs.filter((p) => p.id !== g.fief).map((p) => `<option value="${p.id}">${PROV_DEF[p.id].city}</option>`).join('')}</select>`;
+          html += `<div class="sect"><b>後継ぎ</b>：${heir ? `${esc(heir.name)}（${heir.fatherId === r.id ? (isLegit(st, heir) ? '嫡子' : '庶子') : '一門'}・${nat.heirId === heir.id ? '指名' : '慣例'}）${age(st, heir) < 15 ? '<span class="muted">※まだ幼く、成人前に代替わりすれば一門の成人が継ぐ</span>' : ''}` : '<span class="neg">なし（一門がいなければ家臣が継ぎます）</span>'}
+            ${hc.length ? `<select data-heir><option value="">後継ぎを指名…</option>${hc.map((g) => `<option value="${g.id}">${esc(g.name)}（${age(st, g)}歳${g.fatherId === r.id ? (isLegit(st, g) ? '・嫡子' : '・庶子') : '・一門'}）</option>`).join('')}</select>` : ''}
+            <div class="muted">指名がなければ嫡子（正室の子）の年長が継ぎます。嫡子をさしおいて指名すると、嫡子と正室が不満を抱きます。継承のとき、不満を持つ男子（野心家・母が野心家・封地持ちほど）が跡目争いで兵を挙げることがあります。</div></div>`;
+          html += `<h3>男子</h3>${sons.length ? `<table class="list"><tr><th>名前</th><th>母</th><th>年齢</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>忠誠</th><th>養育・封地</th></tr>
+            ${sons.map((g) => `<tr><td>${esc(g.name)} ${isLegit(st, g) ? '<span class="role-tag">嫡子</span>' : '<span class="muted small">庶子</span>'}${(g.traits ?? []).map((t) => ` <span class="trait" title="${esc(TRAITS[t]?.desc ?? '')}">${TRAITS[t]?.name ?? ''}</span>`).join('')}</td>
+              <td class="small">${esc(st.consorts[g.motherId]?.name ?? '―')}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${age(st, g) >= 15 ? g.loyalty : '-'}</td>
+              <td>${age(st, g) >= 15 ? `出仕（${PROV_DEF[g.province]?.city ?? ''}） ${fiefSel(g)}` : `元服まで${15 - age(st, g)}年<br>${tutorSel(g, 'g')} ${eduSel(g, 'g')}`}</td></tr>`).join('')}</table>
+            <div class="muted">傅役をつけると毎年${TUTOR_FEE}金で、傅役の能力に近づくように育ち、特技を受け継ぐこともあります。封地を与えた王族は太守となり、その都市の民忠が上がります。</div>` : '<p class="muted">君主の男子はまだいません。</p>'}
             <h3>姫</h3>`;
           if (!daughters.length) html += '<p class="muted">未婚の姫はいません。</p>';
           html += '<div class="cards">';
@@ -68,6 +102,7 @@ export function haremDialog(app) {
             const ok = age(st, p) >= 15;
             html += `<div class="card">${portrait(p, culture, nat.color, 64, age(st, p) < 13)}<div class="info"><b>${esc(p.name)}</b>（${age(st, p)}歳）
               <div class="muted">魅力${p.cha}・政治${p.pol}${p.father ? `・父 ${esc(st.generals[p.father]?.name ?? '')}` : ''}</div>
+              ${!ok ? `<div style="margin-top:3px">${tutorSel(p, 'p')}</div>` : ''}
               ${ok ? `<div class="row" style="margin-top:4px"><button class="btn small" data-wed-foreign="${p.id}">他国へ嫁がせる</button><button class="btn small" data-wed-vassal="${p.id}">家臣に嫁がせる</button></div>` : `<div class="muted">成人（15歳）まで${15 - age(st, p)}年</div>`}
               </div></div>`;
           }
@@ -86,6 +121,13 @@ export function haremDialog(app) {
                 <td>${esc(p.name)}（${age(st, p)}歳・魅${p.cha}）</td><td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${chanceText(st, nid, requestChance(st, nid, n.id), `bride:${n.id}`)}</td>
                 <td><button class="btn small" data-ask="${n.id}" ${female || tried ? 'disabled' : ''}>${tried ? '今季は申込済' : '縁談を申し込む'}</button></td></tr>`;
             }).join('') || '<tr><td colspan="5" class="muted">適齢の姫がいる国はありません。</td></tr>'}</table>`;
+          const wd = female ? [] : widows(st);
+          if (wd.length) {
+            html += `<h3>滅びた国の妃</h3><p class="muted">国を失った妃たち。迎えることはできますが、恨みを抱いているため寵愛は低いところから始まります。</p><div class="cards">
+              ${wd.map((c) => `<div class="card">${portrait(c, st.nations[c.formerNation]?.culture ?? 'mongol', '#777')}<div class="info"><b>${esc(c.name)}</b>（${age(st, c)}歳）<div class="muted">旧${esc(c.formerName ?? '')}の妃・魅力${c.cha}・政治${c.pol}</div>
+                <div><span class="trait" title="${esc(CONSORT_TRAITS[consortTrait(c)].desc)}">${CONSORT_TRAITS[consortTrait(c)].name}</span></div>
+                <button class="btn small" data-widow="${c.id}">妃に迎える</button></div></div>`).join('')}</div>`;
+          }
           const orph = orphans(st);
           if (orph.length) {
             html += `<h3>身寄りのない姫</h3><p class="muted">滅亡した国の姫たち。迎え入れることができます。</p><div class="cards">
@@ -94,6 +136,16 @@ export function haremDialog(app) {
           }
         }
         el.innerHTML = html;
+      };
+      el.onchange = (e) => {
+        const d = e.target.dataset;
+        const pick = (key) => { const [kind, id] = key.split(':'); return kind === 'g' ? st.generals[id] : st.princesses[id]; };
+        if (d.heir !== undefined && e.target.value) { const res = designateHeir(st, nid, e.target.value); toast(res.ok ? `${st.generals[e.target.value].name}を後継ぎに指名した` : res.reason); }
+        if (d.tutor) { const res = assignTutor(st, pick(d.tutor), e.target.value || null); if (!res.ok) toast(res.reason); }
+        if (d.edu) pick(d.edu).edu = e.target.value;
+        if (d.fief && e.target.value) { const res = grantFief(st, d.fief, e.target.value); toast(res.ok ? `${PROV_DEF[e.target.value].city}を封地として与えた` : res.reason); }
+        render();
+        app.refresh();
       };
       el.onclick = async (e) => {
         const t = e.target.closest('button');
@@ -114,6 +166,10 @@ export function haremDialog(app) {
           else { p.nation = nid; becomeConsort(st, p, r.id); }
           toast(`${p.name}を迎え入れた`);
         }
+        if (d.domestic) { const res = takeDomesticBride(st, nid, d.domestic); if (res.ok) { audio.sfx('coin'); toast(`${res.consort.name}を妃に迎えた`); } else toast(res.reason); }
+        if (d.vbride) { const sel = el.querySelector('[data-vassal-bride]'); const res = marryVassalDaughter(st, nid, sel?.value); if (res.ok) { audio.sfx('coin'); toast(`${res.consort.name}を妃に迎えた`); } else toast(res.reason); }
+        if (d.widow) { const res = takeWidow(st, d.widow, nid); toast(res.ok ? `${st.consorts[d.widow].name}を妃に迎えた` : res.reason); }
+        if (d.chief) { const res = setChief(st, d.chief); if (!res.ok) toast(res.reason); else toast(`${st.consorts[d.chief].name}を正室に立てた`); }
         if (d.wedForeign) await wedForeign(app, d.wedForeign);
         if (d.wedVassal) await wedVassal(app, d.wedVassal);
         render();
