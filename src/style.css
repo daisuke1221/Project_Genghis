@@ -175,3 +175,14 @@ input[type=range] { accent-color: var(--gold); }
 .card .info { flex: 1; min-width: 0; }
 .portrait { flex-shrink: 0; border-radius: 6px; border: 1px solid var(--gold-dim); }
 .ic-s { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; border-radius: 3px; background: #5b4324; border: 1px solid var(--gold-dim); font-size: 11px; font-weight: 900; }
+
+/* ---------- シナリオ選択 ---------- */
+.scenario-box { width: min(760px, 94vw); padding: 18px 20px; }
+.scenario-box h2 { color: var(--gold); }
+.scenario-list { display: flex; flex-direction: column; gap: 6px; }
+.scenario-card { display: flex; gap: 14px; align-items: center; padding: 8px 12px; border: 1px solid var(--gold-dim); border-radius: 6px; cursor: pointer; }
+.scenario-card:hover { background: rgba(255,255,255,.06); }
+.scenario-card.sel { border-color: var(--gold); background: rgba(212,169,74,.18); }
+.scenario-card .yr { font-size: 26px; font-weight: 900; color: var(--gold); min-width: 70px; }
+.scenario-desc { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--gold-dim); font-size: 14px; line-height: 1.7; }
+.scenario-desc h3 { color: var(--gold); }

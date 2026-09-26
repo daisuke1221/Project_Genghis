@@ -99,7 +99,7 @@ export function isFrontier(st, nid, pid) {
 
 function chooseType(st, nid, g, pid) {
   if (g.unit && g.unit.soldiers > 0) return g.unit.type;
-  const culture = CULTURES[NATION_DEF[nid].culture];
+  const culture = CULTURES[st.nations[nid].culture];
   const city = st.provinces[pid].city;
   const horsesOk = city.horses > 600;
   if (culture.nomad && horsesOk) return chance(st, 0.55) ? 'harch' : 'cav';

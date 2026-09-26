@@ -53,7 +53,7 @@ export function recruit(st, gid, type, want) {
   const p = st.provinces[g.province];
   const nat = st.nations[g.nation];
   const y = cityYields(st, g.province);
-  const culture = CULTURES[NATION_DEF[g.nation].culture];
+  const culture = CULTURES[st.nations[g.nation].culture];
   const base = Math.min(95, 25 + y.trainNew + (culture.nomad && UNIT_TYPES[type].horses ? 20 : 0) + (type === 'siege' ? y.tech.siegeTrain : 0));
   const cur = g.unit?.soldiers ?? 0;
   const curTr = g.unit?.training ?? base;
@@ -300,7 +300,7 @@ export function searchTalent(st, nid, pid) {
   if (nat.gold < SEARCH_COST) return { ok: false, reason: '金が足りません' };
   nat.gold -= SEARCH_COST;
   if (!chance(st, 0.55)) return { ok: true, found: null };
-  const g = randomGeneral(st, null, NATION_DEF[nid].culture);
+  const g = randomGeneral(st, null, st.nations[nid].culture);
   g.province = pid;
   return { ok: true, found: addGeneral(st, g).id };
 }

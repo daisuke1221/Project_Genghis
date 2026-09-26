@@ -1,5 +1,6 @@
 // ゲーム状態の生成と共通ヘルパー
-import { NATIONS, PROVINCES, NAMED_GENERALS, CULTURES, NAME_POOLS, START_YEAR, SEASONS, UNIT_TYPES } from './data.js';
+import { NATIONS, PROVINCES, CULTURES, NAME_POOLS, SEASONS, UNIT_TYPES, NAMED_CONSORTS, NAMED_PRINCESSES } from './data.js';
+import { buildScenario } from './scenarios.js';
 import { rnd, rint, pick, chance } from './rng.js';
 import { NEIGHBORS } from './geo.js';
 import { createCity, aiDevelopCity, cityYields, bestTile, startBuild } from './city.js';
@@ -9,14 +10,19 @@ import { initMarket } from './trade.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
+const NATIONS_BASE = NATIONS;
 
-export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7fffffff) } = {}) {
+export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7fffffff), scenario = 's1189' } = {}) {
+  const { sc, nations: NATS, generals: GENS, consorts, princesses } = buildScenario(scenario);
+  const NATIONS = NATS;
+  if (!NATIONS.some((n) => n.id === playerNation)) playerNation = sc.recommended;
   const st = {
+    scenario: sc.id,
     version: SAVE_VERSION,
     rng: seed >>> 0,
     nextId: 1,
     seed,
-    year: START_YEAR,
+    year: sc.year,
     season: 0,
     turn: 1,
     playerNation,
@@ -51,6 +57,9 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
       st.nations[b.id].relations[a.id] = r;
     }
   }
+  for (const [a, b, v] of sc.relations || []) {
+    if (st.nations[a] && st.nations[b]) { st.nations[a].relations[b] = v; st.nations[b].relations[a] = v; }
+  }
 
   for (const p of PROVINCES) {
     const owner = NATIONS.find((n) => n.provinces.includes(p.id))?.id ?? null;
@@ -58,8 +67,13 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
   }
 
   // 名のある武将
-  for (const g of NAMED_GENERALS) {
-    addGeneral(st, { ...g, loyalty: rint(st, 85, 100) });
+  const homeCap = Object.fromEntries(NATIONS_BASE.map((n) => [n.id, n.capital]));
+  for (const g of GENS) {
+    const ng = addGeneral(st, { ...g, loyalty: rint(st, 85, 100) });
+    ng.named = true;
+    // 他勢力へ移った人物は一門ではない
+    if (g.nation !== g.homeNation && !NATIONS.some((n) => n.ruler && (sc.rename?.[n.ruler] ?? n.ruler) === g.name)) ng.family = false;
+    if (!ng.nation) ng.province = st.nations[g.homeNation]?.capital ?? homeCap[g.homeNation] ?? 'kiy';
   }
   // 名無しの武将を補充
   for (const n of NATIONS) {
@@ -71,7 +85,7 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
   for (let i = 0; i < 14; i++) {
     const p = pick(st, PROVINCES);
     const owner = st.provinces[p.id].owner;
-    const culture = owner ? NATION_DEF[owner].culture : 'mongol';
+    const culture = owner ? st.nations[owner].culture : 'mongol';
     const g = randomGeneral(st, null, culture);
     g.province = p.id;
     addGeneral(st, g);
@@ -102,17 +116,19 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
   // 初期兵力
   for (const g of Object.values(st.generals)) {
     if (!g.nation || age(st, g) < 15) continue;
-    const culture = CULTURES[NATION_DEF[g.nation].culture];
+    const culture = CULTURES[st.nations[g.nation].culture];
     const type = initialUnitType(st, culture, g);
     const cap = unitCap(g);
-    g.unit = { type, soldiers: Math.round(cap * (0.35 + rnd(st) * 0.35) / 50) * 50, training: rint(st, 40, 70) + (culture.nomad ? 10 : 0) };
+    const vet = NATIONS.find((n) => n.id === g.nation)?.veteran;
+    const fill = vet ? 0.85 + rnd(st) * 0.15 : 0.35 + rnd(st) * 0.35;
+    g.unit = { type, soldiers: Math.round(cap * fill / 50) * 50, training: Math.min(100, rint(st, 40, 70) + (culture.nomad ? 10 : 0) + (vet ? 20 : 0)) };
   }
 
   // 太守の任命と初期開発
   for (const p of Object.values(st.provinces)) {
     if (p.owner) assignBestGovernor(st, p.id);
     const def = PROV_DEF[p.id];
-    const devs = Math.round(def.pop / 3500) + 2;
+    const devs = Math.round(def.pop / 3500) + 2 + Math.floor((sc.year - 1189) / 8);
     aiDevelopCity(st, p.id, { free: true, count: devs });
     for (const row of p.city.grid) if (row.b) row.b.progress = 1;
     // 大都市は人口に見合う住居を持たせる
@@ -124,10 +140,10 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
       h.b.level += 1;
     }
   }
-  initRoyals(st);
+  initRoyals(st, consorts, princesses);
   initTechs(st);
   initMarket(st);
-  log(st, `${START_YEAR}年春、ユーラシアの覇権をめぐる戦いが始まった。`, true);
+  log(st, `${sc.year}年春、シナリオ「${sc.title}」開始。ユーラシアの覇権をめぐる戦いが始まった。`, true);
   return st;
 }
 
@@ -236,7 +252,7 @@ export function deserialize(s) {
   if (st.version < 2) {
     // v1 → v2：後宮・技術者・交易を追加
     st.nextId = st.nextId || 1;
-    initRoyals(st);
+    initRoyals(st, NAMED_CONSORTS, NAMED_PRINCESSES);
     initTechs(st);
     initMarket(st);
     st.version = 2;

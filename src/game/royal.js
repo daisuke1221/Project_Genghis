@@ -33,14 +33,16 @@ export function addPrincess(st, { name, nation, father = null, mother = null, bi
   return st.princesses[id];
 }
 
-export function initRoyals(st) {
+export function initRoyals(st, consortList = NAMED_CONSORTS, princessList = NAMED_PRINCESSES) {
   st.consorts = {};
   st.princesses = {};
   for (const g of Object.values(st.generals)) if (FEMALE_GENERALS.includes(g.name)) g.female = true;
-  for (const [name, nation, birth, cha, pol] of NAMED_CONSORTS) {
+  for (const [name, nation, birth, cha, pol] of consortList) {
+    if (!st.nations[nation]) continue;
     addConsort(st, { name, nation, husband: st.nations[nation].rulerId, birth, cha, pol, affection: 80 });
   }
-  for (const [name, nation, birth, cha, pol, fatherName] of NAMED_PRINCESSES) {
+  for (const [name, nation, birth, cha, pol, fatherName] of princessList) {
+    if (!st.nations[nation]) continue;
     const father = fatherName ? Object.values(st.generals).find((g) => g.name === fatherName)?.id : st.nations[nation].rulerId;
     const mother = Object.values(st.consorts).find((c) => c.husband === father)?.id ?? null;
     addPrincess(st, { name, nation, father, mother, birth, cha, pol });

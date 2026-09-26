@@ -20,6 +20,8 @@ import { cityYields, canBuild, startBuild, buildCost, tileAt, clearForest, demol
 import { moveTargets } from './game/military.js';
 import { executeMove } from './game/actions.js';
 import { endTurn } from './game/turn.js';
+import { areNeighbors } from './game/diplomacy.js';
+import { SCENARIOS, getScenario } from './game/scenarios.js';
 import { autoResolve } from './game/battle.js';
 
 const cultureName = (c) => ({ mongol: 'モンゴル系遊牧民', turkic: 'テュルク系遊牧民', chinese: '漢・女真・契丹', korean: '高麗', japanese: '日本（武家）', tibetan: 'チベット', islamic: 'イスラーム', indian: 'インド', european: '西欧', slavic: 'スラヴ', greek: 'ギリシア（ビザンツ）', georgian: 'グルジア' }[c] ?? c);
@@ -58,8 +60,7 @@ class App {
     this.mode = 'title';
     $('#hud').classList.add('hidden');
     this.engine.setView(this.world);
-    if (!this.preview) this.preview = newGame({ seed: 1 });
-    this.world.setState(this.preview);
+    this.world.setState(this.previewOf(SCENARIOS[0].id));
     this.world.setSelected(null);
     this.world.autoRotate = true;
     let hasAuto = false;
@@ -83,7 +84,7 @@ class App {
       audio.init();
       audio.play('title');
       audio.sfx('click');
-      if (a === 'new') this.showSelect();
+      if (a === 'new') this.showScenarios();
       if (a === 'continue') this.loadSlot('auto');
       if (a === 'load') { const slot = await D.saveLoadDialog(this, 'load'); if (slot) this.loadSlot(slot); }
       if (a === 'help') D.helpDialog();
@@ -91,27 +92,80 @@ class App {
     };
   }
 
-  showSelect() {
+  previewOf(id) {
+    this.previews = this.previews || {};
+    if (!this.previews[id]) this.previews[id] = newGame({ scenario: id, seed: 1 });
+    return this.previews[id];
+  }
+
+  showScenarios(initial = this.scenarioId ?? SCENARIOS[0].id) {
+    this.mode = 'scenario';
+    this.world.autoRotate = true;
+    let cur = initial;
+    const render = () => {
+      const sc = getScenario(cur);
+      const st = this.previewOf(cur);
+      this.world.setState(st);
+      this.world.setSelected(null);
+      const alive = Object.values(st.nations).filter((n) => n.alive)
+        .sort((a, b) => nationProvinces(st, b.id).length - nationProvinces(st, a.id).length);
+      $('#screen').innerHTML = `
+        <div class="title-screen scenario-screen">
+          <div class="panel scenario-box">
+            <h2>シナリオを選択</h2>
+            <div class="scenario-list">
+              ${SCENARIOS.map((s) => `<div class="scenario-card ${s.id === cur ? 'sel' : ''}" data-s="${s.id}">
+                <div class="yr">${s.year}</div><div><b>${s.title}</b><div class="muted">${s.subtitle}</div></div></div>`).join('')}
+            </div>
+            <div class="scenario-desc">
+              <h3>${sc.title}</h3><p>${sc.desc}</p>
+              <div class="muted">勢力数 ${alive.length}　主な勢力：${alive.slice(0, 6).map((n) => `<span class="swatch" style="background:${n.color}"></span>${n.name}（${nationProvinces(st, n.id).length}）`).join('　')}</div>
+            </div>
+            <div class="row" style="justify-content:space-between;margin-top:12px">
+              <button class="btn" data-a="back">戻る</button>
+              <button class="btn primary" data-a="next">このシナリオで勢力を選ぶ</button>
+            </div>
+          </div>
+        </div>`;
+    };
+    render();
+    $('#screen').onclick = (e) => {
+      const card = e.target.closest('[data-s]');
+      if (card) { cur = card.dataset.s; audio.sfx('click'); render(); return; }
+      const a = e.target.closest('[data-a]')?.dataset.a;
+      if (a === 'back') this.showTitle();
+      if (a === 'next') { this.scenarioId = cur; audio.sfx('click'); this.showSelect(cur); }
+    };
+  }
+
+  showSelect(scenarioId = this.scenarioId ?? SCENARIOS[0].id) {
     this.mode = 'select';
     this.world.autoRotate = false;
     this.world.controls.target.set(40, 0, 0);
     this.world.camera.position.set(40, 60, 50);
-    const st = this.preview;
-    const nations = Object.values(st.nations);
-    let chosen = 'kiyat';
+    const sc = getScenario(scenarioId);
+    const st = this.previewOf(scenarioId);
+    this.world.setState(st);
+    const nations = Object.values(st.nations).filter((n) => n.alive);
+    let chosen = sc.recommended;
     const render = () => {
       const n = st.nations[chosen];
       const r = ruler(st, chosen);
       const provs = nationProvinces(st, chosen);
       const gens = nationGenerals(st, chosen);
-      const diff = provs.length >= 4 ? '易' : provs.length >= 2 ? '中' : '難';
+      // 難易度：最も強い隣国との兵力比と領地の数から
+      const mine = nationSoldiers(st, chosen);
+      const rivals = Object.values(st.nations).filter((x) => x.alive && x.id !== chosen && areNeighbors(st, chosen, x.id));
+      const strongest = Math.max(1, ...rivals.map((x) => nationSoldiers(st, x.id)));
+      const score = (mine / strongest) * (1 + provs.length * 0.1);
+      const diff = score >= 1.3 ? '易' : score >= 0.7 ? '中' : '難';
       $('#screen').innerHTML = `
-        <div class="panel select-head">プレイする勢力を地図から選んでください</div>
+        <div class="panel select-head">${sc.year}年「${sc.title}」— プレイする勢力を地図から選んでください</div>
         <div class="panel select-panel">
-          <h2><span class="swatch" style="background:${n.color}"></span>${n.name}</h2>
+          <h2><span class="swatch" style="background:${n.color}"></span>${n.name}${chosen === sc.recommended ? ' <span class="muted" style="font-size:13px">おすすめ</span>' : ''}</h2>
           <div class="grid2">
             <span>君主</span><span>${r.name}（${st.year - r.birth}歳）</span>
-            <span>文化</span><span>${cultureName(NATION_DEF[chosen].culture)}</span>
+            <span>文化</span><span>${cultureName(st.nations[chosen].culture)}</span>
             <span>領地</span><span>${provs.map((p) => PROV_DEF[p.id].city).join('、')}</span>
             <span>武将</span><span>${gens.length}人</span>
             <span>兵力</span><span>${fmt(nationSoldiers(st, chosen))}</span>
@@ -130,23 +184,23 @@ class App {
     this.world.onSelect = (pid) => {
       if (this.mode !== 'select') return this.onWorldClick(pid);
       const owner = pid && st.provinces[pid].owner;
-      if (owner) { chosen = owner; audio.sfx('click'); render(); }
+      if (owner && st.nations[owner].alive) { chosen = owner; audio.sfx('click'); render(); }
     };
     $('#screen').onclick = (e) => {
       const row = e.target.closest('[data-n]');
       if (row) { chosen = row.dataset.n; audio.sfx('click'); render(); this.world.focus(st.nations[chosen].capital); return; }
       const a = e.target.closest('[data-a]')?.dataset.a;
-      if (a === 'back') this.showTitle();
-      if (a === 'start') this.startGame(chosen);
+      if (a === 'back') this.showScenarios(scenarioId);
+      if (a === 'start') this.startGame(chosen, scenarioId);
     };
   }
 
-  startGame(nid) {
-    this.st = newGame({ playerNation: nid, seed: (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff });
+  startGame(nid, scenarioId) {
+    this.st = newGame({ playerNation: nid, scenario: scenarioId, seed: (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff });
     this.enterGame();
     const r = ruler(this.st, nid);
     modal({
-      title: `${this.st.year}年 春`,
+      title: `${this.st.year}年 春 —「${getScenario(this.st.scenario).title}」`,
       body: `<p>${this.st.nations[nid].name}の${r.name}として、あなたの戦いが始まる。</p>
         <p>まずは都市を選び、<b>「箱庭（内政）」</b>で農地や市場を建てて国を富ませよう。兵を集め、隣国を攻め取り、ユーラシアの${Math.round(0.75 * 100)}%を支配すれば天下統一だ。</p>
         <p class="muted">操作：左ドラッグ／右ドラッグで地図の移動・回転、ホイールで拡大縮小。</p>`,
@@ -638,7 +692,7 @@ class App {
   saveSlot(slot) {
     try {
       localStorage.setItem(`${SAVE_PREFIX}${slot}`, serialize(this.st));
-      localStorage.setItem(`${SAVE_PREFIX}${slot}.meta`, JSON.stringify({ date: dateStr(this.st), nation: this.st.nations[this.st.playerNation].name, provs: nationProvinces(this.st, this.st.playerNation).length, saved: Date.now() }));
+      localStorage.setItem(`${SAVE_PREFIX}${slot}.meta`, JSON.stringify({ scenario: getScenario(this.st.scenario).title, date: dateStr(this.st), nation: this.st.nations[this.st.playerNation].name, provs: nationProvinces(this.st, this.st.playerNation).length, saved: Date.now() }));
       return true;
     } catch (err) {
       toast(`保存に失敗しました：${err.message}`);

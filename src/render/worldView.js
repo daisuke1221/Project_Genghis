@@ -204,7 +204,7 @@ export class WorldView {
     for (const p of PROVINCES) {
       const prov = st.provinces[p.id];
       const owner = prov.owner;
-      const style = owner ? CULTURES[NATION_DEF[owner].culture].style : 'nomad';
+      const style = owner ? CULTURES[st.nations[owner].culture].style : 'nomad';
       const color = owner ? st.nations[owner].color : '#999999';
       const isCap = owner && st.nations[owner].capital === p.id;
       const soldiers = owner ? generalsIn(st, p.id, owner).reduce((s, g) => s + (g.unit?.soldiers ?? 0), 0) : 0;

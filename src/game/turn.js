@@ -147,7 +147,7 @@ function yearlyEvents(st) {
   for (let i = ronin; i < 16; i += 1) {
     const p = pick(st, PROVINCES);
     const owner = st.provinces[p.id].owner;
-    const g = randomGeneral(st, null, owner ? NATION_DEF[owner].culture : 'mongol');
+    const g = randomGeneral(st, null, owner ? st.nations[owner].culture : 'mongol');
     g.province = p.id;
     addGeneral(st, g);
     if (i - ronin >= 2) break;
