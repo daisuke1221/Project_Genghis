@@ -215,6 +215,44 @@ export class CityView {
       if (model.userData.smoke) this.addSmoke(model, model.userData.smoke);
       model.traverse((o) => { if (o.userData.flag) this.animated.push({ flag: o, phase: Math.random() * 10 }); });
     }
+    this.buildAdminProps(city);
+  }
+
+  // 内政の成果を箱庭に表す：治水の堤、商業の露店
+  buildAdminProps(city) {
+    const irr = city.irrigation ?? 0, com = city.commerce ?? 0;
+    if (irr >= 30) {
+      const stone = irr >= 70 ? 0xa8a49a : 0x8a7a5a;
+      for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
+        if (tileAt(city, x, y).t !== 'river') continue;
+        const [px, pz] = tilePos(x, y);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const n = tileAt(city, x + dx, y + dy);
+          if (!n || n.t === 'river') continue;
+          const bank = dx ? M.box(stone, 0.18, 0.28, S * 0.96, px + dx * S * 0.46, 0, pz) : M.box(stone, S * 0.96, 0.28, 0.18, px, 0, pz + dy * S * 0.46);
+          this.bGroup.add(bank);
+        }
+      }
+    }
+    const stalls = Math.floor(com / 20);
+    if (stalls) {
+      const cols = [0xc0392b, 0xd4a94a, 0x2e7d9a, 0x8e44ad, 0x3f8f4b];
+      const free = [];
+      for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
+        const t = tileAt(city, x, y);
+        if (!t.b && (t.t === 'grass' || t.t === 'sand')) free.push([x, y, Math.abs(x - 4) + Math.abs(y - 4)]);
+      }
+      free.sort((a, b) => a[2] - b[2] || a[0] * 9 + a[1] - (b[0] * 9 + b[1]));
+      for (let i = 0; i < Math.min(stalls, free.length); i++) {
+        const [x, y] = free[i];
+        const [px, pz] = tilePos(x, y);
+        for (let k = 0; k < 2; k++) {
+          const ox = px + (k ? 0.5 : -0.5), oz = pz + (k ? 0.35 : -0.35);
+          this.bGroup.add(M.box(0x7a5a3a, 0.7, 0.35, 0.45, ox, 0.2, oz));
+          this.bGroup.add(M.cone(cols[(x + y + k) % cols.length], 0.55, 0.35, ox, 0.75, oz, 4));
+        }
+      }
+    }
   }
 
   addLevelMarks(model, level) {

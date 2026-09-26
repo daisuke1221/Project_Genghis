@@ -221,3 +221,12 @@ input[type=range] { accent-color: var(--gold); }
 .duel-names b { color: var(--red); }
 .duel-score { font-size: 20px; letter-spacing: .1em; color: #ffd76a; }
 .duel-log { margin-top: 6px; font-size: 15px; line-height: 1.7; }
+
+/* 内政 */
+.admin-stats td { vertical-align: top; }
+.admin-stats td:first-child { white-space: nowrap; color: var(--ink-dim); }
+.admin-stats .bar { width: 90px; }
+.small { font-size: 11px; }
+.admin-cmds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.admin-cmd { text-align: left; line-height: 1.35; padding: 6px 8px; }
+@media (max-width: 640px) { .admin-cmds { grid-template-columns: repeat(2, 1fr); } }
