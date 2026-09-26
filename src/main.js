@@ -12,6 +12,7 @@ import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
 import { adminDialog } from './ui/adminDialog.js';
 import { retainerDialog, subvertDialog } from './ui/retainerDialog.js';
 import { TRAITS, ROLES, RANKS, roleOf, rebelRisk, subvertTargets, ensurePersonnel } from './game/personnel.js';
+import { strategistAdvice, strategistOf, rumorTargets, rumorAvailable, rumorChance, spreadRumor, chanceText, RUMOR_COST } from './game/strategist.js';
 import { adminOf, provReligion, nationReligion, RELIGIONS, TAX_LEVELS } from './game/admin.js';
 import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
 import { siegeAt, siegeInfo, assault, sally, liftSiege } from './game/siege.js';
@@ -240,6 +241,7 @@ class App {
     if (!this.st) return;
     this.renderTopbar();
     this.renderLog();
+    this.renderAdvice();
     if (this.mode === 'map') {
       $('#leftpanel').classList.add('hidden');
       this.renderSide();
@@ -289,6 +291,17 @@ class App {
       if (a === 'settings') D.settingsDialog(this);
       if (a === 'help') D.helpDialog();
     };
+  }
+
+  // 軍師の助言（地図の左上）
+  renderAdvice() {
+    const el = $('#advice');
+    const adv = this.mode === 'map' ? strategistAdvice(this.st, this.st.playerNation) : null;
+    if (!adv) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = `<div class="adv-head" data-adv="1">軍師${esc(adv.by)}の助言 <span class="muted">${this.adviceClosed ? '▸' : '▾'}</span></div>
+      ${this.adviceClosed ? '' : adv.lines.map((l) => `<div class="adv-line">・${esc(l)}</div>`).join('')}`;
+    el.onclick = () => { this.adviceClosed = !this.adviceClosed; this.renderAdvice(); };
   }
 
   renderLog() {
@@ -350,7 +363,7 @@ class App {
         <span class="muted">／特産 ${def.specialty} 在庫${fmt(c.goods?.[def.specialty] ?? 0)}荷</span></div>`;
     } else {
       const canSub = p.owner && subvertTargets(st, st.playerNation).some((g) => g.province === pid && g.nation === p.owner);
-      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}${canSub ? '<button class="btn" data-a="subvert" title="敵将を引き抜く・内応させる">調略</button>' : ''}</div>`;
+      html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}${canSub ? '<button class="btn" data-a="subvert" title="敵将を引き抜く・内応させる">調略</button>' : ''}${p.owner && rumorTargets(st, st.playerNation).includes(pid) ? `<button class="btn" data-a="rumor" ${rumorAvailable(st, st.playerNation, pid).ok ? '' : 'disabled'} title="${esc(strategistOf(st, st.playerNation) ? `軍師が城下に流言を放ち、民忠と治安を下げる（${RUMOR_COST}金・軍師はその季節は動けない）` : '軍師がいないと使えません')}">流言${strategistOf(st, st.playerNation) ? `（${chanceText(st, st.playerNation, rumorChance(st, st.playerNation, pid), `rumor:${pid}`)}）` : ''}</button>` : ''}</div>`;
     }
     const si = siegeInfo(st, pid);
     if (si) {
@@ -391,6 +404,7 @@ class App {
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
       if (a === 'admin') { await adminDialog(this, pid); this.refresh(); }
       if (a === 'subvert') { await subvertDialog(this, pid); this.refresh(); }
+      if (a === 'rumor') { const r = spreadRumor(this.st, this.st.playerNation, pid); if (!r.ok) toast(r.reason); else { audio.sfx(r.success ? 'coin' : 'error'); toast(r.text); } this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
       if (a === 'diplo') { await diplomacyDialog(this, p.owner); this.refresh(); }
       if (a === 'assault') { audio.sfx('horn'); const r = await assault(this.st, pid, this.hooks); if (r.reason) toast(r.reason); else toast(r.fell ? `${def.city}を攻め落とした！` : '総攻撃は失敗した…'); this.checkOver(); this.refresh(); }

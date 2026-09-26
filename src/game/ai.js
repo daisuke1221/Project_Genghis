@@ -16,6 +16,7 @@ import { becomeConsort } from './royal.js';
 import { aiSieges } from './siege.js';
 import { aiAdmin } from './admin.js';
 import { aiSubvert } from './personnel.js';
+import { aiStrategist } from './strategist.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -77,6 +78,7 @@ export async function aiNationTurn(st, nid, hooks = {}) {
 
   // 調略
   aiSubvert(st, nid, (t, imp) => log(st, t, imp));
+  aiStrategist(st, nid);
 
   // 徴兵
   aiRecruit(st, nid, reserve);

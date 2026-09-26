@@ -201,7 +201,7 @@ export function defect(st, g, nid, near) {
   const old = g.nation;
   g.nation = nid;
   g.loyalty = 55 + rint(st, 0, 15);
-  delete g.betray; delete g.betrayUntil; delete g.besieging;
+  delete g.betray; delete g.betrayUntil; delete g.besieging; delete g.exposed;
   for (const p of Object.values(st.provinces)) if (p.governorId === g.id) { p.governorId = null; if (p.owner === old) assignBestGovernor(st, p.id); }
   if (old && st.nations[old]?.roles) for (const k of ROLE_ORDER) if (st.nations[old].roles[k] === g.id) delete st.nations[old].roles[k];
   const own = (q) => st.provinces[q]?.owner === nid;
@@ -242,7 +242,7 @@ export function personnelTick(st) {
     const t = loyaltyTarget(st, g).target;
     if (g.loyalty < t) g.loyalty += Math.min(2, t - g.loyalty);
     else if (g.loyalty > t) g.loyalty -= Math.min(3, g.loyalty - t);
-    if (g.betrayUntil && g.betrayUntil <= st.turn) { delete g.betray; delete g.betrayUntil; }
+    if (g.betrayUntil && g.betrayUntil <= st.turn) { delete g.betray; delete g.betrayUntil; delete g.exposed; }
   }
 }
 
@@ -341,6 +341,12 @@ export function subvert(st, agentId, targetId, mode) {
     addMerit(agent, 10);
     gainExp(st, agent, 'cha', 20);
     if (mode === 'hire') {
+      const det = plotDetected(st, old, nid);
+      if (det) {
+        target.loyalty = Math.min(100, target.loyalty + 5);
+        adjustRel(st, nid, old, -10);
+        return { ok: true, success: false, foiled: det.name, text: `${target.name}は誘いに乗りかけたが、${st.nations[old].name}の軍師${det.name}に見破られた。` };
+      }
       const keep = target.unit ? Math.round(target.unit.soldiers * 0.5 / 10) * 10 : 0;
       defect(st, target, nid, agent.province);
       if (target.unit) target.unit.soldiers = keep;
@@ -349,11 +355,60 @@ export function subvert(st, agentId, targetId, mode) {
     }
     target.betray = nid;
     target.betrayUntil = st.turn + 8;
+    const det = plotDetected(st, old, nid);
+    if (det) {
+      if (old === st.playerNation) target.exposed = nid;
+      else { delete target.betray; delete target.betrayUntil; target.loyalty = Math.min(100, target.loyalty + 5); }
+      return { ok: true, success: true, exposed: det.name, text: `${target.name}は内応を約束した……が、${st.nations[old].name}の軍師${det.name}に露見したようだ。` };
+    }
     return { ok: true, success: true, text: `${target.name}は内応を約束した。2年以内に${st.nations[old].name}と合戦になれば、こちらに寝返る。` };
   }
   target.loyalty = Math.min(100, target.loyalty + 5);
   adjustRel(st, nid, old, -10);
   return { ok: true, success: false, text: `${target.name}は誘いを拒み、主君に報告した。` };
+}
+
+// 謀略の察知：狙われた国の軍師が見破る（仕掛けた側の軍師が優れていると見破りにくい）
+export function plotDetected(st, victim, agentNid) {
+  const s = victim ? roleHolder(st, victim, 'strategist') : null;
+  if (!s) return null;
+  const their = agentNid ? roleHolder(st, agentNid, 'strategist') : null;
+  const p = Math.max(0.05, Math.min(0.85, 0.15 + s.pol / 200 - (their ? their.pol / 400 : 0)));
+  return rnd(st) < p ? s : null;
+}
+
+// 内通が露見した家臣への処置
+export function interrogateChance(st, g) {
+  const r = st.generals[st.nations[g.nation].rulerId];
+  return Math.max(0.1, Math.min(0.9, 0.3 + (r?.cha ?? 50) / 250 + g.loyalty / 250));
+}
+export function interrogate(st, gid) {
+  const g = st.generals[gid];
+  const to = g.betray;
+  if (!to) { delete g.exposed; return { ok: false, reason: '内通していません' }; }
+  if (rnd(st) < interrogateChance(st, g)) {
+    delete g.betray; delete g.betrayUntil; delete g.exposed;
+    g.loyalty = Math.min(100, g.loyalty + 8);
+    return { ok: true, success: true, text: `${g.name}は非を認め、二心を捨てると誓った。` };
+  }
+  const keep = g.unit ? Math.round(g.unit.soldiers * 0.5 / 10) * 10 : 0;
+  delete g.exposed;
+  if (st.nations[to]?.alive) {
+    defect(st, g, to, g.province);
+    if (g.unit) g.unit.soldiers = keep;
+    return { ok: true, success: false, text: `${g.name}は問い詰められて出奔し、兵${keep}を連れて${st.nations[to].name}へ走った！` };
+  }
+  banish(st, gid);
+  return { ok: true, success: false, text: `${g.name}は出奔した。` };
+}
+export function banish(st, gid) {
+  const g = st.generals[gid];
+  const old = g.nation;
+  for (const k of ROLE_ORDER) if (st.nations[old]?.roles?.[k] === g.id) delete st.nations[old].roles[k];
+  g.nation = null; g.unit = null;
+  delete g.betray; delete g.betrayUntil; delete g.exposed; delete g.besieging;
+  for (const p of Object.values(st.provinces)) if (p.governorId === g.id) { p.governorId = null; if (p.owner === old) assignBestGovernor(st, p.id); }
+  return { ok: true, text: `${g.name}を追放した。` };
 }
 
 function adjustRel(st, a, b, d) {
@@ -382,7 +437,9 @@ export function aiSubvert(st, nid, onLog) {
   const r = subvert(st, best.a.id, best.t.id, best.mode);
   if (!r.ok) return;
   if (victim === st.playerNation) {
-    if (!r.success) onLog?.(`${st.nations[nid].name}が${best.t.name}に調略を仕掛けたが、${best.t.name}は拒んで報告してきた。`, true);
+    if (r.foiled) onLog?.(`軍師${r.foiled}が${st.nations[nid].name}の調略を見破り、${best.t.name}の引き抜きを未然に防いだ。`, true);
+    else if (r.exposed) onLog?.(`軍師${r.exposed}の探索で、${best.t.name}が${st.nations[nid].name}に内応を約束していることが分かった！（家臣団で処置できます）`, true);
+    else if (!r.success) onLog?.(`${st.nations[nid].name}が${best.t.name}に調略を仕掛けたが、${best.t.name}は拒んで報告してきた。`, true);
     else if (best.mode === 'hire') onLog?.(`${best.t.name}が${st.nations[nid].name}に寝返った！`, true);
   }
 }

@@ -5,8 +5,10 @@ import { PROV_DEF, nationGenerals, age, ruler } from '../game/state.js';
 import { reward } from '../game/military.js';
 import {
   TRAITS, RANKS, ROLES, ROLE_ORDER, ensurePersonnel, affDist, affMark, loyaltyTarget, canPromote, promoteCost, promote,
-  roleOf, roleHolder, appoint, rebelRisk, subvertChance, subvertAgents, subvert, SUBVERT_COST,
+  roleOf, roleHolder, appoint, rebelRisk, subvertChance, subvertAgents, subvert, SUBVERT_COST, hasTrait, interrogate, interrogateChance, banish,
 } from '../game/personnel.js';
+import { chanceText } from '../game/strategist.js';
+import { confirmBox } from './ui.js';
 
 export const traitChips = (g) => (ensurePersonnel(g).traits.map((t) => `<span class="trait ${t === 'ambitious' ? 'bad' : t === 'loyal' ? 'good' : ''}" title="${esc(TRAITS[t].desc)}">${TRAITS[t].name}</span>`).join('') || '<span class="muted">―</span>');
 export const rankLabel = (g) => `${RANKS[ensurePersonnel(g).rank].name}<span class="muted small">（功${g.merit}${g.rank < RANKS.length - 1 ? `/${RANKS[g.rank + 1].merit}` : ''}）</span>`;
@@ -15,7 +17,7 @@ export function loyaltyCell(st, g) {
   if (n?.rulerId === g.id) return '<span class="muted">君主</span>';
   const lt = loyaltyTarget(st, g);
   const tip = lt.items.map(([l, v]) => `${l}${v >= 0 ? '+' : ''}${v}`).join(' / ');
-  const warn = rebelRisk(st, g) > 0 ? ' <span class="neg" title="謀反のおそれ">不穏</span>' : g.loyalty < 35 && !g.family ? ' <span class="neg" title="出奔のおそれ">!</span>' : '';
+  const warn = g.exposed && g.betray ? ` <span class="neg" title="${esc(st.nations[g.betray]?.name ?? '')}と内通">内通</span>` : rebelRisk(st, g) > 0 ? ' <span class="neg" title="謀反のおそれ">不穏</span>' : g.loyalty < 35 && !g.family ? ' <span class="neg" title="出奔のおそれ">!</span>' : '';
   return `<span title="${esc(tip)}">${g.loyalty}<span class="muted small">→${g.family ? '一門' : lt.target}</span></span>${warn}`;
 }
 export function compatCell(st, g) {
@@ -50,7 +52,7 @@ export function retainerDialog(app) {
               return `<tr><td>${isRuler ? '👑' : ''}${esc(g.name)}${role ? ` <span class="role-tag">${ROLES[role].name}</span>` : ''}${g.family && !isRuler ? ' <span class="muted small">一門</span>' : ''}</td>
                 <td>${PROV_DEF[g.province]?.city ?? ''}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td>
                 <td>${rankLabel(g)}</td><td>${traitChips(g)}</td><td>${compatCell(st, g)}</td><td>${loyaltyCell(st, g)}</td>
-                <td class="row">${canPromote(g) ? `<button class="btn small primary" data-promote="${g.id}">昇進（${promoteCost(g)}金）</button>` : ''}
+                <td class="row">${g.exposed && g.betray ? `<button class="btn small" data-ask="${g.id}" title="成功すれば二心を捨てる。失敗すると兵を連れて出奔する">詰問（${chanceText(st, nid, interrogateChance(st, g), `ask:${g.id}`)}）</button><button class="btn small" data-ban="${g.id}">追放</button>` : ''}${canPromote(g) ? `<button class="btn small primary" data-promote="${g.id}">昇進（${promoteCost(g)}金）</button>` : ''}
                 ${isRuler ? '' : `<button class="btn small" data-rw="${g.id}">褒美</button>`}</td></tr>`;
             }).join('')}</table></div>
             <p class="muted">忠誠は毎季、目標値に向かって少しずつ動きます（数値にカーソルを合わせると内訳）。功績が次の位階に届いた武将は昇進させないと不満を持ちます。</p>`;
@@ -68,14 +70,21 @@ export function retainerDialog(app) {
           html += `<h3>特技</h3><table class="list">${Object.values(TRAITS).map((t) => `<tr><td style="white-space:nowrap"><span class="trait">${t.name}</span></td><td>${esc(t.desc)}</td></tr>`).join('')}</table>
             <h3>位階と功績</h3><p>${RANKS.map((r) => `${r.name}（功績${r.merit}）`).join(' → ')}</p>
             <p class="muted">功績は合戦（勝てば多く、総大将や一騎討ちの勝者はさらに多い）・内政命令・調略の成功で貯まります。位階が1つ上がるごとに率いる兵の上限+5%、忠誠の目標+2。合戦や内政で使った能力は経験を積んで少しずつ伸び、若いほど伸びやすく、60歳を過ぎると衰えます。</p>
+            <h3>軍師</h3><p class="muted">軍師がいると、各種の成功率（外交・登用・調略・計略など）が見通せるようになります（政治力が高いほど正確）。軍師は敵の調略を見破り、離間の計（外交画面）や流言（敵地の画面）を仕掛け、毎季、地図の左上で助言をします。</p>
             <h3>忠誠</h3><p class="muted">目標値＝基本45＋君主の魅力＋君主との相性（◎〜×）＋位階＋役職＋特技（忠義・野心）−昇進の遅れ−俸給の遅れ。<br>
             忠誠が35を下回ると出奔することがあり、太守が忠誠を大きく失うと（野心家は40未満で）地方ごと謀反を起こして自立します。忠誠が低いと敵の調略にも乗りやすくなります。</p>`;
         }
         el.innerHTML = html;
       };
       el.onclick = (e) => {
-        const t = e.target.closest('[data-tab],[data-sort],[data-promote],[data-rw]');
+        const t = e.target.closest('[data-tab],[data-sort],[data-promote],[data-rw],[data-ask],[data-ban]');
         if (!t) return;
+        if (t.dataset.ask) { const r = interrogate(st, t.dataset.ask); if (r.ok) { audio.sfx(r.success ? 'coin' : 'error'); toast(r.text); } }
+        if (t.dataset.ban) {
+          const g = st.generals[t.dataset.ban];
+          confirmBox('追放', `${esc(g.name)}を追放しますか？（率いる兵は解散します）`).then((ok) => { if (ok) { toast(banish(st, g.id).text); render(); } });
+          return;
+        }
         if (t.dataset.tab) tab = t.dataset.tab;
         if (t.dataset.sort) sort = t.dataset.sort;
         if (t.dataset.promote) {
@@ -124,9 +133,9 @@ export function subvertDialog(app, pid) {
             const btn = (mode) => {
               if (!agent) return '―';
               const p = subvertChance(st, agent, g, mode);
-              if (!p) return '<span class="muted">応じない</span>';
+              if (st.nations[owner].rulerId === g.id || g.family || hasTrait(g, 'loyal')) return '<span class="muted">応じない</span>';
               if (mode === 'betray' && g.betray === nid) return '<span class="pos">約束済み</span>';
-              return `<button class="btn small" data-sv="${g.id}" data-mode="${mode}" ${tried || nat.gold < SUBVERT_COST ? 'disabled' : ''}>${Math.round(p * 100)}%</button>`;
+              return `<button class="btn small" data-sv="${g.id}" data-mode="${mode}" ${tried || nat.gold < SUBVERT_COST ? 'disabled' : ''}>仕掛ける（${chanceText(st, nid, p, `sv:${agent.id}:${g.id}:${mode}`)}）</button>`;
             };
             return `<tr><td>${esc(g.name)}${st.nations[owner].rulerId === g.id ? ' 👑' : ''}${roleOf(st, g) ? ` <span class="role-tag">${ROLES[roleOf(st, g)].name}</span>` : ''}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td>
               <td>${traitChips(g)}</td><td>${g.loyalty}</td><td>${fmt(g.unit?.soldiers ?? 0)}</td><td>${btn('hire')}</td><td>${btn('betray')}</td></tr>`;

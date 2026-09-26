@@ -237,3 +237,9 @@ input[type=range] { accent-color: var(--gold); }
 .trait.good { border-color: #4a8a4a; color: #b8f0b0; background: rgba(60,160,60,.15); }
 .role-tag { font-size: 11px; padding: 0 4px; border-radius: 3px; background: #6d5218; color: #fff; white-space: nowrap; }
 table.list th.clickable { cursor: pointer; }
+
+/* 軍師の助言 */
+#advice { position: absolute; top: 56px; left: 10px; width: 340px; max-height: 40%; overflow-y: auto; padding: 8px 12px; font-size: 13px; line-height: 1.5; cursor: pointer; }
+#advice .adv-head { color: #c9a0ff; font-weight: 700; }
+#advice .adv-line { margin-top: 3px; }
+@media (max-width: 900px) { #advice { width: 240px; font-size: 12px; } }

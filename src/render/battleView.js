@@ -1,6 +1,7 @@
 // 合戦ビュー：ヘックス戦場の3D表示とプレイヤー操作
 import * as THREE from 'three';
 import { TRAITS, ROLES } from '../game/personnel.js';
+import { chanceText } from '../game/strategist.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { UNIT_TYPES } from '../game/data.js';
@@ -201,7 +202,7 @@ export class BattleView {
       </div>
       <div class="panel" style="position:absolute;right:10px;top:10px;width:220px;padding:8px 10px;font-size:12px;line-height:1.6">
         <b>操作</b><br>左クリック：部隊選択 → 青いマスへ移動 → 赤い敵を攻撃<br>右クリック：選択解除<br>ドラッグ：視点回転<br>
-        <span class="muted">騎兵は2マス以上動いてから攻撃すると突撃ボーナス。敵を囲むと挟撃ボーナス。本丸を占拠すれば攻撃側の勝利。<br>★総大将が敗走すると全軍が動揺する。計略は政治力で成功率が決まる。森の部隊は伏兵（敵から見えない）。</span>
+        <span class="muted">騎兵は2マス以上動いてから攻撃すると突撃ボーナス。敵を囲むと挟撃ボーナス。本丸を占拠すれば攻撃側の勝利。<br>★総大将が敗走すると全軍が動揺する。計略は政治力で成功率が決まる（成功率は軍師がいれば見通せる）。森の部隊は伏兵（敵から見えない）。</span>
       </div>`;
     const $ = (id) => this.overlay.querySelector(id);
     $('#bt-wait').onclick = () => { if (this.canAct() && this.selected) { waitUnit(this.b, this.selected); this.deselect(); this.refreshAll(); this.checkAllDone(); } };
@@ -249,6 +250,11 @@ export class BattleView {
     this.showInfo(this.hoverUnit || this.selected);
   }
 
+  // 軍師の見立て：同じ戦場に軍師がいればより正確
+  foresee(p, key) {
+    return chanceText(this.st, this.st.playerNation, p, `${key}:${this.b.turn}`, this.b.strategist?.[this.playerSide] ? 20 : 0);
+  }
+
   showInfo(u) {
     const box = this.overlay.querySelector('#bt-info');
     if (!box) return;
@@ -260,8 +266,8 @@ export class BattleView {
     const land = { steppe: '草原：騎馬の攻撃+15%', mountain: '山岳：騎馬の白兵-10%・歩兵の白兵+10%', forest: '森林地帯：歩兵の白兵+10%' }[this.b.terrain];
     if (land) html += `<div class="muted">${land}</div>`;
     if (this.b.notes?.length) html += `<div class="muted">${this.b.notes.slice(-3).join('<br>')}</div>`;
-    if (this.tacticMode === 'duel' && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">一騎討ち：応じる確率 ${Math.round(duelAcceptChance(this.b, this.selected, u) * 100)}%・勝率 約${Math.round(duelWinChance(this.selected, u) * 100)}%</div>`;
-    else if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">${TACTICS[this.tacticMode].name}の成功率：${Math.round(tacticChance(this.b, this.selected, this.tacticMode, u) * 100)}%</div>`;
+    if (this.tacticMode === 'duel' && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">一騎討ち：応じる確率 ${this.foresee(duelAcceptChance(this.b, this.selected, u), `da:${this.selected.id}:${u.id}`)}・勝率 ${this.foresee(duelWinChance(this.selected, u), `dw:${this.selected.id}:${u.id}`)}</div>`;
+    else if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">${TACTICS[this.tacticMode].name}の成功率：${this.foresee(tacticChance(this.b, this.selected, this.tacticMode, u), `tc:${this.selected.id}:${u.id}:${this.tacticMode}`)}</div>`;
     if (u) {
       const T = UNIT_TYPES[u.type];
       const tt = tileOf(this.b, u.c, u.r).t;

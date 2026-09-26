@@ -9,6 +9,7 @@ import {
   demandVassal, declareIndependence, annexChance, annexVassal, hegemon, areNeighbors, TRIBUTE_RATE,
 } from '../game/diplomacy.js';
 import { handleCalls } from '../game/actions.js';
+import { chanceText, strategistOf, discordChance, discordAvailable, sowDiscord, DISCORD_COST } from '../game/strategist.js';
 
 const pct = (p) => `${Math.round(p * 100)}%`;
 
@@ -66,7 +67,7 @@ export function diplomacyDialog(app, focus) {
             ${vassalsOf(st, nid).length ? `<span>従属国</span><span>${vassalsOf(st, nid).map((v) => st.nations[v].name).join('、')}</span>` : ''}
             ${lordOf(st, nid) ? `<span>宗主国</span><span>${st.nations[lordOf(st, nid)].name}</span>` : ''}
           </div>`;
-        const btn = (a, label, p, extra = '', dis = false) => `<button class="btn small" data-a="${a}" ${extra} ${dis ? 'disabled' : ''}>${label}${p !== undefined ? `<span class="muted">（${pct(p)}）</span>` : ''}</button>`;
+        const btn = (a, label, p, extra = '', dis = false) => `<button class="btn small" data-a="${a}" ${extra} ${dis ? 'disabled' : ''}>${label}${p !== undefined && p > 0 ? `<span class="muted">（${chanceText(st, me, p, `dip:${a}:${nid}:${extra}:${terms.kind}:${terms.gold}:${terms.province}`)}）</span>` : ''}</button>`;
         const gold = st.nations[me].gold;
         h += `<div class="sect"><b>贈物</b><div class="row">${btn('gift300', '300金を贈る', undefined, '', gold < 300)}${btn('gift1000', '1000金を贈る', undefined, '', gold < 1000)}</div></div>`;
         if (war) {
@@ -115,8 +116,19 @@ export function diplomacyDialog(app, focus) {
           }
           if (!tr || tr === 'truce') h += `<div class="sect">${btn('war', '宣戦布告する')}${n.coalition === me ? ' <span class="neg">この国は貴国への包囲網に加わっています</span>' : ''}</div>`;
         }
+        // 離間の計（軍師の謀略）
+        const others = Object.values(st.nations).filter((o) => o.alive && o.id !== me && o.id !== nid && treaty(st, nid, o.id) !== 'vassal')
+          .sort((x, y) => (!!treaty(st, nid, y.id) - !!treaty(st, nid, x.id)) || relation(st, nid, y.id) - relation(st, nid, x.id));
+        if (!others.some((o) => o.id === discordWith)) discordWith = others[0]?.id ?? null;
+        const strat = strategistOf(st, me);
+        const dav = discordWith ? discordAvailable(st, me, nid, discordWith) : { ok: false, reason: '' };
+        h += `<div class="sect"><b>離間の計</b> <span class="muted">${strat ? `軍師${esc(strat.name)}が二国の間に偽りの噂を流し、仲を裂く（${DISCORD_COST}金・軍師はその季節は動けない）` : '軍師がいないと使えません'}</span>
+          ${strat && others.length ? `<div class="row">${esc(n.name)}と<select data-discord>${others.map((o) => `<option value="${o.id}" ${o.id === discordWith ? 'selected' : ''}>${esc(o.name)}（${treatyLabel(st, nid, o.id)}・友好${relation(st, nid, o.id)}）</option>`).join('')}</select>の仲を
+            <button class="btn small" data-a="discord" ${dav.ok ? '' : 'disabled'}>裂く<span class="muted">（${chanceText(st, me, discordChance(st, me, nid, discordWith), `discord:${nid}:${discordWith}`)}）</span></button>
+            ${dav.ok ? '' : `<span class="muted">${esc(dav.reason)}</span>`}</div>` : ''}</div>`;
         return h;
       };
+      let discordWith = null;
 
       const callChance = (ally, enemy) => Math.max(0.05, Math.min(0.9, 0.3 + relation(st, ally, me) / 120 - (nationPower(st, enemy) > nationPower(st, ally) * 1.5 ? 0.2 : 0)));
       const once = (key) => {
@@ -131,6 +143,7 @@ export function diplomacyDialog(app, focus) {
         if (e.target.name === 't') terms.kind = e.target.value;
         if (e.target.dataset.gold !== undefined) terms.gold = Number(e.target.value);
         if (e.target.dataset.prov !== undefined) terms.province = e.target.value;
+        if (e.target.dataset.discord !== undefined) discordWith = e.target.value;
         render();
       };
       el.onclick = async (e) => {
@@ -141,6 +154,11 @@ export function diplomacyDialog(app, focus) {
         const a = b.dataset.a, nid = sel, name = st.nations[nid].name;
         let r;
         switch (a) {
+          case 'discord':
+            r = sowDiscord(st, me, nid, discordWith);
+            if (!r.ok) toast(r.reason); else { audio.sfx(r.success ? 'coin' : 'error'); toast(r.text); }
+            app.renderTopbar();
+            break;
           case 'gift300': case 'gift1000':
             r = gift(st, me, nid, a === 'gift300' ? 300 : 1000);
             if (r.ok) { audio.sfx('coin'); toast(`${name}との友好度が${r.gain}上がった`); }

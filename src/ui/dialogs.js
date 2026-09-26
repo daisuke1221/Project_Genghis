@@ -12,6 +12,7 @@ import { portrait } from './portrait.js';
 import { defenders, initialSupply, siegeAt } from '../game/siege.js';
 import { traitChips, rankLabel, loyaltyCell, compatCell } from './retainerDialog.js';
 import { canPromote, promoteCost, promote, roleOf, ROLES } from '../game/personnel.js';
+import { chanceText, strategistOf } from '../game/strategist.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -128,7 +129,7 @@ export function personnelDialog(app, pid) {
           <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が35を下回ると出奔し、不満の大きい太守は謀反を起こします。役職・特技の詳細は上部の「家臣」から。</p>
           <h3>在野の人材</h3>
           ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>成功率</th><th></th></tr>
-            ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${Math.round(hireChance(st, nid, g) * 100)}%</td>
+            ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${chanceText(st, nid, hireChance(st, nid, g), `hire:${g.id}`)}</td>
             <td>${g.hireTried === st.turn ? '<span class="muted">今季は断られた</span>' : `<button class="btn small" data-hire="${g.id}">登用</button>`}</td></tr>`).join('')}</table>` : '<p class="muted">この地方に在野の人材はいません。</p>'}
           <div class="row" style="margin-top:8px"><button class="btn" data-search="1">人材を探す（${SEARCH_COST}金）</button><span class="muted">成功すると在野の人物が見つかります。</span></div>`;
       };
@@ -298,6 +299,10 @@ export function helpDialog() {
       <li>合戦・内政・調略で功績が貯まり、十人長→百人長→千人長→万人長と昇進させられます（兵の上限+5%/位階）。功績が届いたのに昇進させないと不満が出ます。</li>
       <li>忠誠は毎季、目標値（君主の魅力・相性・位階・役職・特技など）へ近づきます。35未満で出奔し、不満の大きい太守は謀反を起こします。</li>
       <li>敵地を選ぶと「調略」で敵将を引き抜いたり、次の合戦で寝返らせる内応を約束させたりできます。</li></ul>
+      <h3>軍師</h3>
+      <ul><li>各種の成功率は、軍師がいないと「？」で見えません。軍師の政治力が高いほど正確に見通せます。</li>
+      <li>軍師は敵の調略を見破り（内通した家臣は家臣団で詰問・追放）、外交画面で「離間の計」、敵地の画面で「流言」を仕掛けられます（その季節は出陣不可）。</li>
+      <li>地図の左上に、軍師の助言（謀反のおそれ・侵攻の気配・攻めどき・内政の不安など）が表示されます。</li></ul>
       <h3>後宮・王族</h3>
       <ul><li>上部の「後宮」から妃を寵愛し（一季に一人）、子を授かりましょう。男子は15歳で一門の武将として出仕し、後継ぎになります。</li>
       <li>姫が15歳になったら、他国の君主に嫁がせて婚姻同盟を結ぶか、家臣に嫁がせて忠誠を100にできます。他国に縁談を申し込んで妃を迎えることもできます。</li></ul>
@@ -327,7 +332,7 @@ export function captivesDialog(app, gids) {
           ${gids.map((id) => {
             const g = st.generals[id];
             const ch = recruitChance(st, nid, g);
-            return `<tr><td>${esc(g.name)}${g.nation && st.nations[g.nation]?.rulerId === id ? '（君主）' : ''}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${Math.round(ch * 100)}%</td>
+            return `<tr><td>${esc(g.name)}${g.nation && st.nations[g.nation]?.rulerId === id ? '（君主）' : ''}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${ch > 0 ? chanceText(st, nid, ch, `captive:${id}`) : '応じない'}</td>
               <td><select data-c="${id}">
                 ${ch > 0 ? `<option value="recruit" ${decisions[id] === 'recruit' ? 'selected' : ''}>登用</option>` : ''}
                 <option value="release" ${decisions[id] === 'release' ? 'selected' : ''}>解放</option>
@@ -415,7 +420,7 @@ export async function eventDialog(app, { ev, title, text, choices, date, involve
 // ---------- 城攻めの方針 ----------
 export async function attackModeDialog(app, { gids, to, existing }) {
   busy(null);
-  const st = app.st;
+  const st = app.st, nid = st.playerNation;
   const c = st.provinces[to].city;
   const defs = defenders(st, to);
   const dp = defs.reduce((a, g) => a + unitPower(g), 0);
@@ -433,7 +438,7 @@ export async function attackModeDialog(app, { gids, to, existing }) {
         <span>城兵</span><span>${fmt(dSol)}（${defs.length}将）</span>
         <span>城壁</span><span>${WALLS[c.walls].name}</span>
         <span>城内の兵糧</span><span>${supply >= 0 ? `約${supply}季分` : '尽きている'}</span>
-        <span>見込み</span><span>${ratio >= 1.5 ? '<span class="pos">強襲でも勝てそう</span>' : ratio >= 0.9 ? '強襲は五分五分' : '<span class="neg">強襲は厳しい</span>'}</span></div>
+        <span>見込み</span><span>${!strategistOf(st, nid) ? '<span class="muted">（軍師がいないため見通せない）</span>' : `${ratio >= 1.5 ? '<span class="pos">強襲でも勝てそう</span>' : ratio >= 0.9 ? '強襲は五分五分' : '<span class="neg">強襲は厳しい</span>'}<span class="muted">（軍師${strategistOf(st, nid).name}の見立て）</span>`}</span></div>
       <table class="list" style="margin-top:8px">
         <tr><td><b>強襲</b></td><td class="muted">すぐに城攻めの合戦を行う。城兵は城壁の分だけ守りが堅い。</td></tr>
         <tr><td><b>包囲</b></td><td class="muted">城を囲んで兵糧攻めにする。毎季、城壁を削り、兵糧が尽きれば開城する。包囲軍は兵站のため兵糧を倍消費し${winter ? '、<span class="neg">冬は寒さで大きく消耗する</span>' : '、冬は消耗が大きい'}。敵の後詰めや出撃に注意。</td></tr>

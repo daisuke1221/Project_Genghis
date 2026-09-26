@@ -8,6 +8,7 @@ import {
   consortsOf, sonsOf, visit, giftConsort, birthChance, marriageable, marryToRuler, marryToVassal,
   requestBride, requestChance, brideAcceptChance, orphans, becomeConsort, adoptOrphan, isFemaleRuler,
 } from '../game/royal.js';
+import { chanceText } from '../game/strategist.js';
 import { techsIn, availableTechs, hireTech, hireCost, assignTech, dismissTech } from '../game/tech.js';
 import {
   priceAt, routeQuote, createRoute, cancelRoute, routesFrom, maxRoutes, maxRouteLength, routeCapacity, goodsProduction,
@@ -81,7 +82,7 @@ export function haremDialog(app) {
               const p = marriageable(st, n.id).sort((a, b) => b.cha - a.cha)[0];
               const tried = st.nations[nid].brideAsked?.[n.id] === st.turn;
               return `<tr><td><span class="swatch" style="background:${n.color}"></span>${n.name}${areNeighbors(st, nid, n.id) ? '' : ' <span class="muted">(遠方)</span>'}</td>
-                <td>${esc(p.name)}（${age(st, p)}歳・魅${p.cha}）</td><td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${Math.round(requestChance(st, nid, n.id) * 100)}%</td>
+                <td>${esc(p.name)}（${age(st, p)}歳・魅${p.cha}）</td><td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${chanceText(st, nid, requestChance(st, nid, n.id), `bride:${n.id}`)}</td>
                 <td><button class="btn small" data-ask="${n.id}" ${female || tried ? 'disabled' : ''}>${tried ? '今季は申込済' : '縁談を申し込む'}</button></td></tr>`;
             }).join('') || '<tr><td colspan="5" class="muted">適齢の姫がいる国はありません。</td></tr>'}</table>`;
           const orph = orphans(st);
@@ -133,7 +134,7 @@ function wedForeign(app, pid) {
       el.innerHTML = `<p class="muted">相手の君主の妃となり、婚姻同盟が結ばれます。姫は二度と戻りません。</p>
         <table class="list"><tr><th>勢力</th><th>君主</th><th>友好</th><th>受諾率</th><th></th></tr>
         ${list.map((n) => `<tr><td><span class="swatch" style="background:${n.color}"></span>${n.name}</td><td>${esc(ruler(st, n.id)?.name ?? '')}（${age(st, ruler(st, n.id))}歳）</td>
-          <td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${Math.round(brideAcceptChance(st, nid, n.id) * 100)}%</td><td><button class="btn small" data-n="${n.id}">申し込む</button></td></tr>`).join('')}</table>`;
+          <td>${st.nations[nid].relations[n.id] ?? 0}</td><td>${chanceText(st, nid, brideAcceptChance(st, nid, n.id), `wed:${n.id}:${p.id}`)}</td><td><button class="btn small" data-n="${n.id}">申し込む</button></td></tr>`).join('')}</table>`;
       el.onclick = (e) => {
         const to = e.target.dataset.n;
         if (!to) return;
