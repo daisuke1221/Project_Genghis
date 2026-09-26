@@ -39,6 +39,8 @@ export function researchRate(st, nid) {
     if (t.nation !== nid) continue;
     r += t.level * (t.trait === 'inventor' ? 1.5 : 1) * (t.type === 'scholar' ? 1.5 : 1);
   }
+  // 書物・紙が届く都市は学問が盛ん
+  for (const p of Object.values(st.provinces)) if (p.owner === nid && (p.city.imports || []).some((g) => g === '書物' || g === '紙')) r += 0.5;
   return Math.round(r * 10) / 10;
 }
 export function setResearch(st, nid, key) {

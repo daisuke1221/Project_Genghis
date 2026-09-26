@@ -17,7 +17,7 @@ import { adminOf, provReligion, nationReligion, RELIGIONS, TAX_LEVELS } from './
 import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
 import { siegeAt, siegeInfo, assault, sally, liftSiege } from './game/siege.js';
 import { techsIn } from './game/tech.js';
-import { routesFrom } from './game/trade.js';
+import { routesFrom, isHub, isPort } from './game/trade.js';
 import { TECH_TYPES } from './game/data.js';
 import {
   newGame, PROV_DEF, NATION_DEF, dateStr, nationProvinces, nationGenerals, generalsIn, nationSoldiers, ruler,
@@ -338,7 +338,7 @@ class App {
       ${p.owner && !own && (tr || atWar(st, st.playerNation, p.owner)) ? `<span class="${tr ? 'pos' : 'neg'}">［${treatyLabel(st, st.playerNation, p.owner)}］</span>` : ''}${rel !== null ? ` <span class="muted">友好 ${rel}</span>` : ''}</div>
       <div class="grid2">
         <span>地勢</span><span>${PROVINCE_TERRAIN[def.terrain].name}</span>
-        <span>特産</span><span>${def.specialty}（価値${def.specValue}）</span>
+        <span>特産</span><span>${def.specialty}（価値${def.specValue}）${isHub(pid) ? ' <span class="role-tag">要衝</span>' : ''}${isPort(pid) ? ' <span class="role-tag">港</span>' : ''}</span>
         <span>人口</span><span>${fmt(c.pop)} / ${fmt(y.popCap)}</span>
         <span>民忠</span><span>${c.loyalty} ${statBar(c.loyalty)}</span>
         <span>治安</span><span>${adminOf(c).order} ${statBar(c.order, 100, '#7aa0d8')}</span>
