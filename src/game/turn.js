@@ -1,5 +1,5 @@
 // ターン進行：AIフェイズ → 季節の経済処理 → 年次イベント → 勝敗判定
-import { VICTORY_SHARE, PROVINCES } from './data.js';
+import { PROVINCES } from './data.js';
 import { chance, shuffle, pick } from './rng.js';
 import {
   PROV_DEF, NATION_DEF, nationProvinces, nationGenerals, generalsIn, age, log, dateStr, assignBestGovernor,
@@ -22,6 +22,9 @@ import { supplyTick, mercTick, fatigueTick } from './warfare.js';
 import { researchTick } from './research.js';
 import { provinceCalamity, calamityTick } from './calamity.js';
 import { faithTick, holyWarTurn } from './faith.js';
+import { navyTick } from './navy.js';
+import { gloryTick, checkVictory } from './glory.js';
+import { recordHistory } from './history.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -44,6 +47,7 @@ export async function endTurn(st, hooks = {}) {
   }
   await flushCaptives(st, hooks);
   advanceTime(st);
+  recordHistory(st);
   checkGameOver(st);
   if (!st.over) {
     await runEvents(st, hooks);
@@ -113,6 +117,8 @@ export function seasonTick(st) {
   }
   calamityTick(st);
   faithTick(st);
+  navyTick(st);
+  gloryTick(st);
   diplomacyTick(st);
   healTick(st);
   techTick(st);
@@ -198,15 +204,7 @@ function yearlyEvents(st) {
 
 export function checkGameOver(st) {
   if (st.over) return st.over;
-  const player = st.playerNation;
-  if (!st.nations[player].alive) {
-    st.over = { type: 'lose', text: `${st.nations[player].name}は滅亡した……` };
-    return st.over;
-  }
-  const mine = nationProvinces(st, player).length;
-  if (mine >= Math.ceil(PROVINCES.length * VICTORY_SHARE)) {
-    st.over = { type: 'win', text: `${dateStr(st)}、${st.nations[player].name}はユーラシアの大半を手中に収めた！` };
-  }
+  st.over = checkVictory(st);
   return st.over;
 }
 

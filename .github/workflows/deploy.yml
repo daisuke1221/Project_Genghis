@@ -1,8 +1,7 @@
 name: Deploy to GitHub Pages
 
+# main への push では自動実行しない（GitHub Pages を使えないため）。必要なときは Actions 画面から手動で実行する
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

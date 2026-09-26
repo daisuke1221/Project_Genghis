@@ -228,6 +228,8 @@ export function loyaltyTarget(st, g) {
   if (hasTrait(g, 'ambitious')) items.push(['野心', -12]);
   if (nat && nat.gold <= 0) items.push(['俸給の遅れ', -10]);
   if (g.family) items.push(['一門', 25]);
+  const tier = nat ? Math.max(nat.tier ?? 0, nat.crowned ? 3 : 0) : 0; // 君主の称号（glory.js）
+  if (tier) items.push(['君主の称号', tier * 2]);
   if (g.fief && st.provinces[g.fief]?.owner === g.nation) items.push(['封地', 5]);
   if (g.inlaw && st.consorts?.[g.inlaw]?.alive && st.consorts[g.inlaw].nation === g.nation) items.push(['外戚', 12]);
   const chief = r && courtHooks.chiefOf ? courtHooks.chiefOf(st, r.id) : null;

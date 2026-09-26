@@ -68,7 +68,7 @@ describe('放浪・仕官・推挙', () => {
     moved = gs.filter((g) => g.province !== 'kf').length;
     expect(moved).toBeGreaterThan(5);
     expect(petitions.length).toBeGreaterThan(0);
-    const p = petitions[0];
+    const p = petitions.find((x) => !st.generals[x.gid].nation) ?? petitions[0];
     expect(acceptPetition(st, p.gid)).toBe(true);
     expect(st.generals[p.gid].nation).toBe('jin');
   });

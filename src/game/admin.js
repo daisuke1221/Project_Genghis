@@ -6,6 +6,7 @@ import { hasTrait, chancellorBonus, gainExp, addMerit } from './personnel.js';
 import { knows } from './research.js';
 import { calamityMods, plagueOf, famineOf, cureChance, cure, relieveFamine, aiQuarantine } from './calamity.js';
 import { faithMods, onConverted } from './faith.js';
+import { navyGoldMul, blockadedBy } from './navy.js';
 
 export const TAX_LEVELS = [
   { name: '軽税', mul: 0.6, loyalty: 10, order: 4, grow: 1.3, desc: '税収60%・民忠↑・人口が増えやすい' },
@@ -103,6 +104,7 @@ export function adminMods(st, pid) {
     loyalty.push(...faithMods(st, pid));
   }
   const cm = calamityMods(st, pid);
+  if (nid && blockadedBy(st, pid)) cm.goldMul *= navyGoldMul(st, pid);
   loyalty.push(...cm.loyalty);
   order.push(...cm.order);
   const sum = (a) => a.reduce((s, [, v]) => s + v, 0);

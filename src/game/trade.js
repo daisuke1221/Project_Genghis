@@ -6,6 +6,7 @@ import { NEIGHBORS } from './geo.js';
 import { rrange, chance } from './rng.js';
 import { techBonus, genTech, PROV_CULTURE } from './tech.js';
 import { TECH_TYPES } from './data.js';
+import { blockadedBy, seaRouteGuard } from './navy.js';
 
 const PDEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const GOOD_NAMES = Object.keys(GOODS);
@@ -165,7 +166,7 @@ export function routeQuote(st, nid, from, to, qtyOverride, opts = {}) {
   const transit = Math.round((outRevenue + Math.max(0, retProfit)) * 0.05 * hubs.length);
   const cost = ROUTE_UPKEEP + 3 * dist + (opts.escort ? ESCORT_COST : 0);
   const profit = Math.round((outRevenue + retProfit) * bonus - tariff - transit - cost);
-  let risk = sea ? Math.min(0.5, dist * (st.nations[nid]?.innov?.compass ? 0.012 : 0.03)) : routeRisk(st, nid, p);
+  let risk = sea ? Math.min(0.5, dist * (st.nations[nid]?.innov?.compass ? 0.012 : 0.03)) * seaRouteGuard(st, from) : routeRisk(st, nid, p);
   if (opts.escort) risk *= 0.4;
   return {
     ok: true, path: p, dist, qty, outGood, outSell, outRevenue: Math.round(outRevenue), retGood, retQty, retBuy, retSell,
@@ -226,6 +227,7 @@ export function tradeTick(st, onLog) {
       if (mine) onLog?.(`${fromName}→${toName}の交易路は、情勢の変化で途絶えた。`, true);
       continue;
     }
+    if (r.sea && (blockadedBy(st, r.from) || blockadedBy(st, r.to))) { r.last = { blockade: true, profit: 0, turn: st.turn }; continue; } // 海上封鎖
     if (st.provinces[r.from].city.quarantine || st.provinces[r.to].city.quarantine) { r.last = { quarantine: true, profit: 0, turn: st.turn }; continue; } // 封鎖中は隊商が出入りできない
     const c = st.provinces[r.from].city;
     const outGood = PDEF[r.from].specialty;

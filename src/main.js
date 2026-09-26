@@ -13,6 +13,11 @@ import { adminDialog } from './ui/adminDialog.js';
 import { faithDialog } from './ui/faithDialog.js';
 import { calamityTags } from './game/calamity.js';
 import { AUTHORITIES, seatOf } from './game/faith.js';
+import { gloryDialog, historyChartHtml } from './ui/gloryDialog.js';
+import { navyDialog } from './ui/navyDialog.js';
+import { bindCharts } from './ui/chart.js';
+import { shipsAt, blockadedBy } from './game/navy.js';
+import { titleName, VICTORY_MODES, ending } from './game/glory.js';
 import { retainerDialog, subvertDialog } from './ui/retainerDialog.js';
 import { TRAITS, ROLES, RANKS, roleOf, rebelRisk, subvertTargets, ensurePersonnel } from './game/personnel.js';
 import { strategistAdvice, strategistOf, rumorTargets, rumorAvailable, rumorChance, spreadRumor, chanceText, RUMOR_COST } from './game/strategist.js';
@@ -66,6 +71,12 @@ class App {
       event: (payload) => D.eventDialog(this, payload),
       callToArms: (call) => callToArmsDialog(this, call),
       attackMode: (info) => D.attackModeDialog(this, info),
+      naval: async (r) => {
+        const wasBusy = this.turnBusy;
+        busy(null);
+        await modal({ title: r.kind === 'typhoon' ? '大風' : `${r.place}の海戦`, body: `<p>${esc(r.text)}</p>`, buttons: [{ label: 'OK', value: true, primary: true }] });
+        if (wasBusy) busy('他勢力の行動中…');
+      },
     };
     document.addEventListener('keydown', (e) => this.onKey(e));
     this.showTitle();
@@ -164,6 +175,7 @@ class App {
     this.world.setState(st);
     const nations = Object.values(st.nations).filter((n) => n.alive);
     let chosen = sc.recommended;
+    let victory = this.victory ?? 'unify';
     const render = () => {
       const n = st.nations[chosen];
       const r = ruler(st, chosen);
@@ -188,6 +200,8 @@ class App {
             <span>難易度</span><span>${diff}</span>
           </div>
           <div class="muted" style="margin-top:6px">君主 ${r.name}：武${r.war} 統${r.lead} 政${r.pol} 魅${r.cha}</div>
+          <div class="row" style="margin-top:8px;gap:6px;align-items:center"><span>勝利条件</span>${Object.entries(VICTORY_MODES).map(([k, v]) => `<button class="btn small ${victory === k ? 'active' : ''}" data-v="${k}" title="${v.desc}">${v.name}</button>`).join('')}</div>
+          <div class="muted small">${VICTORY_MODES[victory].desc}</div>
           <div class="nation-list"><table class="list">${nations.map((x) => `<tr class="clickable ${x.id === chosen ? 'sel' : ''}" data-n="${x.id}"><td><span class="swatch" style="background:${x.color}"></span>${x.name}</td><td>${nationProvinces(st, x.id).length}地方</td></tr>`).join('')}</table></div>
           <div class="row" style="margin-top:10px;justify-content:space-between">
             <button class="btn" data-a="back">戻る</button>
@@ -203,22 +217,24 @@ class App {
       if (owner && st.nations[owner].alive) { chosen = owner; audio.sfx('click'); render(); }
     };
     $('#screen').onclick = (e) => {
+      const v = e.target.closest('[data-v]')?.dataset.v;
+      if (v) { victory = v; this.victory = v; audio.sfx('click'); render(); return; }
       const row = e.target.closest('[data-n]');
       if (row) { chosen = row.dataset.n; audio.sfx('click'); render(); this.world.focus(st.nations[chosen].capital); return; }
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'back') this.showScenarios(scenarioId);
-      if (a === 'start') this.startGame(chosen, scenarioId);
+      if (a === 'start') this.startGame(chosen, scenarioId, victory);
     };
   }
 
-  startGame(nid, scenarioId) {
-    this.st = newGame({ playerNation: nid, scenario: scenarioId, seed: (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff });
+  startGame(nid, scenarioId, victory = 'unify') {
+    this.st = newGame({ playerNation: nid, scenario: scenarioId, victory, seed: (Date.now() ^ (Math.random() * 1e9)) & 0x7fffffff });
     this.enterGame();
     const r = ruler(this.st, nid);
     modal({
       title: `${this.st.year}年 春 —「${getScenario(this.st.scenario).title}」`,
       body: `<p>${this.st.nations[nid].name}の${r.name}として、あなたの戦いが始まる。</p>
-        <p>まずは都市を選び、<b>「箱庭（内政）」</b>で農地や市場を建てて国を富ませよう。兵を集め、隣国を攻め取り、ユーラシアの${Math.round(0.75 * 100)}%を支配すれば天下統一だ。</p>
+        <p>まずは都市を選び、<b>「箱庭（内政）」</b>で農地や市場を建てて国を富ませよう。兵を集め、隣国を攻め取ろう。勝利条件は<b>「${VICTORY_MODES[victory].name}」</b>：${VICTORY_MODES[victory].desc}。進み具合は上部の「覇業」で確かめられる。</p>
         <p class="muted">操作：左ドラッグ／右ドラッグで地図の移動・回転、ホイールで拡大縮小。</p>`,
       buttons: [{ label: '出陣！', value: true, primary: true }],
     });
@@ -263,7 +279,7 @@ class App {
     const provs = nationProvinces(st, nid).length;
     $('#topbar').innerHTML = `
       <span class="date">${dateStr(st)}</span>
-      <span class="nation"><span class="swatch" style="background:${n.color}"></span>${n.name}</span>
+      <span class="nation"><span class="swatch" style="background:${n.color}"></span>${n.name}${titleName(st, nid) ? `<span class="title-tag">${titleName(st, nid)}</span>` : ''}</span>
       <span class="res">
         <span title="金（前季の収入）">金 <b>${fmt(n.gold)}</b>${inc ? ` <span class="${inc.gold >= 0 ? 'pos' : 'neg'}">(${inc.gold >= 0 ? '+' : ''}${fmt(inc.gold)})</span>` : ''}</span>
         <span title="食糧">食糧 <b>${fmt(n.food)}</b></span>
@@ -277,6 +293,7 @@ class App {
         <button class="btn" data-a="research">研究</button>
         <button class="btn" data-a="harem">後宮</button>
         <button class="btn" data-a="faith">信仰</button>
+        <button class="btn" data-a="glory">覇業</button>
         <button class="btn" data-a="diplo">外交</button>
         <button class="btn" data-a="nations">勢力</button>
         <button class="btn" data-a="save">記録</button>
@@ -295,6 +312,7 @@ class App {
       if (a === 'research') { await X.researchDialog(this); this.refresh(); }
       if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
       if (a === 'faith') { await faithDialog(this); this.refresh(); }
+      if (a === 'glory') { await gloryDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
       if (a === 'settings') D.settingsDialog(this);
@@ -351,6 +369,7 @@ class App {
         ${calamityTags(st, pid).length ? `<span>災害</span><span class="neg">${calamityTags(st, pid).join('・')}</span>` : ''}
         ${own ? `<span>税率・開発</span><span>${TAX_LEVELS[c.tax].name}・治水${c.irrigation}・商業${c.commerce}</span>` : ''}
         <span>城壁</span><span>${WALLS[c.walls].name}${c.wallProgress !== null ? `（建設中 ${Math.round(c.wallProgress * 100)}%）` : ''}</span>
+        ${isPort(pid) && p.owner ? `<span>水軍</span><span>軍船${shipsAt(st, pid)}隻${blockadedBy(st, pid) ? ` <span class="neg">${st.nations[blockadedBy(st, pid)].name}が封鎖中</span>` : ''}</span>` : ''}
         <span>馬</span><span>${fmt(c.horses)}</span>
         ${own ? `<span>季節収入</span><span>金 ${fmt(y.gold)}・食 ${fmt(y.food - y.foodUse)}</span>` : ''}
         <span>太守</span><span>${gov ? gov.name : '―'}</span>
@@ -364,6 +383,7 @@ class App {
         <button class="btn" data-a="personnel">人事</button>
         <button class="btn" data-a="trade">交易・隊商</button>
         <button class="btn" data-a="tech">技術者</button>
+        ${isPort(pid) ? '<button class="btn" data-a="navy">水軍・造船</button>' : ''}
         <button class="btn" data-a="admin">内政命令・税率</button>
         <button class="btn ${p.delegated ? 'active' : ''}" data-a="delegate" title="毎季、建設・税率・内政命令を自動で行います">委任：${p.delegated ? 'ON' : 'OFF'}</button>
       </div>`;
@@ -413,6 +433,7 @@ class App {
       if (a === 'personnel') { await D.personnelDialog(this, pid); this.refresh(); }
       if (a === 'trade') { await X.tradeDialog(this, pid); this.refresh(); }
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
+      if (a === 'navy') { await navyDialog(this, pid); this.refresh(); }
       if (a === 'admin') { await adminDialog(this, pid); this.refresh(); }
       if (a === 'subvert') { await subvertDialog(this, pid); this.refresh(); }
       if (a === 'rumor') { const r = spreadRumor(this.st, this.st.playerNation, pid); if (!r.ok) toast(r.reason); else { audio.sfx(r.success ? 'coin' : 'error'); toast(r.text); } this.refresh(); }
@@ -490,6 +511,7 @@ class App {
     }
     const res = await executeMove(st, nid, mm.gids, mm.from, pid, this.hooks);
     if (res.kind === 'invalid') toast(res.reason);
+    if (res.kind === 'naval') toast(res.report.kind === 'typhoon' ? '大風で船団が壊滅し、引き返した…' : '海戦に敗れ、上陸できなかった…');
     if (res.kind === 'siege') toast(`${PROV_DEF[pid].city}の包囲を始めた。兵糧が尽きるのを待つか、総攻撃をかけよう`);
     if (res.kind === 'relief') toast(res.result?.winner === 'att' ? `${PROV_DEF[pid].city}の包囲を打ち破った！` : '後詰めは失敗した…');
     if (res.kind === 'occupy') { toast(`${PROV_DEF[pid].city}を占領した！`); audio.jingle('win'); }
@@ -764,12 +786,20 @@ class App {
     const over = this.st?.over;
     if (!over) return false;
     audio.jingle(over.type === 'win' ? 'win' : 'lose');
-    $('#screen').innerHTML = `<div class="over-screen"><div class="big">${over.type === 'win' ? '天下統一' : '滅亡'}</div><div>${esc(over.text)}</div>
-      <div class="row"><button class="btn" data-a="cont">地図を眺める</button><button class="btn primary" data-a="title">タイトルへ</button></div></div>`;
+    const e = ending(this.st, over);
+    $('#screen').innerHTML = `<div class="over-screen"><div class="panel ending">
+      <div class="big" style="text-align:center">${esc(e.heading)}</div>
+      <p style="text-align:center">${esc(over.text)}</p>
+      <p class="epi">${esc(e.epi)}</p>
+      <div class="stats">${e.stats.map(([k, v]) => `<div>${esc(k)}<b>${esc(v)}</b></div>`).join('')}</div>
+      <div class="sect"><b>国力の推移</b>${historyChartHtml(this.st, 'power')}</div>
+      <div class="row" style="justify-content:center;gap:8px"><button class="btn" data-a="chron">年表</button><button class="btn" data-a="cont">地図を眺める</button><button class="btn primary" data-a="title">タイトルへ</button></div></div></div>`;
+    bindCharts($('#screen'));
     $('#screen').onclick = (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'title') { localStorage.removeItem(`${SAVE_PREFIX}auto`); this.st = null; this.showTitle(); }
       if (a === 'cont') { $('#screen').innerHTML = ''; }
+      if (a === 'chron') D.nationsDialog(this, 'chron');
     };
     return true;
   }

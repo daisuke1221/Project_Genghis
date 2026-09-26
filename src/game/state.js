@@ -10,12 +10,14 @@ import { initMarket } from './trade.js';
 import { ensurePersonnel, initPersonnel, rankCapMul } from './personnel.js';
 import { initStatecraft } from './statecraft.js';
 import { initFaith } from './faith.js';
+import { initGlory } from './glory.js';
+import { recordHistory } from './history.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
 const NATIONS_BASE = NATIONS;
 
-export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7fffffff), scenario = 's1189' } = {}) {
+export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7fffffff), scenario = 's1189', victory = 'unify' } = {}) {
   const { sc, nations: NATS, generals: GENS, consorts, princesses } = buildScenario(scenario);
   const NATIONS = NATS;
   if (!NATIONS.some((n) => n.id === playerNation)) playerNation = sc.recommended;
@@ -35,7 +37,7 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
     nextGeneralId: 1,
     log: [],
     over: null,
-    options: { autoBattle: false },
+    options: { autoBattle: false, victory },
   };
 
   for (const n of NATIONS) {
@@ -146,9 +148,11 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
   }
   initStatecraft(st);
   initFaith(st);
+  initGlory(st);
   initRoyals(st, consorts, princesses);
   initTechs(st);
   initMarket(st);
+  recordHistory(st);
   log(st, `${sc.year}年春、シナリオ「${sc.title}」開始。ユーラシアの覇権をめぐる戦いが始まった。`, true);
   return st;
 }
@@ -267,6 +271,7 @@ export function deserialize(s) {
   }
   for (const g of Object.values(st.generals)) ensurePersonnel(g);
   if (!st.faith) initFaith(st);
+  if (!st.startYear) initGlory(st);
   return st;
 }
 
