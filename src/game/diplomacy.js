@@ -5,10 +5,13 @@ import { adjustRelation, changeOwner, checkNationAlive } from './military.js';
 import { NEIGHBORS } from './geo.js';
 import { setRoyalHooks, aiMarriage } from './royal.js';
 import { PROVINCES } from './data.js';
+import {
+  mood, personality, PERSONALITIES, hostageBonus, giveHostage, onTreatyBroken, changeTrust, endPact, statecraftTick, aiStatecraft,
+} from './statecraft.js';
 
 export const TRUCE_TURNS = 12;
 export const TRIBUTE_RATE = 0.2;
-const TREATY_NAMES = { alliance: '同盟', truce: '停戦', vassal: '従属' };
+const TREATY_NAMES = { alliance: '同盟', truce: '停戦', vassal: '従属', tribute: '朝貢' };
 
 const nat = (st, id) => st.nations[id];
 const nameOf = (st, id) => st.nations[id]?.name ?? '';
@@ -56,6 +59,7 @@ export function friendsOf(st, a) {
 export function treatyLabel(st, a, b) {
   const t = treaty(st, a, b);
   if (t === 'vassal') return isVassalOf(st, a, b) ? '従属（宗主国）' : '従属国';
+  if (t === 'tribute') return nat(st, a).treaties[b].payer === a ? '朝貢（納める）' : '朝貢（受ける）';
   if (t) return TREATY_NAMES[t];
   if (atWar(st, a, b)) return '交戦中';
   return '―';
@@ -73,7 +77,8 @@ export function gift(st, from, to, gold) {
 }
 
 // ---------- 条約 ----------
-export function acceptChance(st, target, from, kind) {
+export function acceptChance(st, target, from, kind, hostage = null) {
+  const bonus = mood(st, target, from).add + hostageBonus(st, hostage);
   const rel = relation(st, target, from);
   const pf = nationPower(st, from), pt = nationPower(st, target);
   const ratio = pf / Math.max(1, pt);
@@ -81,11 +86,11 @@ export function acceptChance(st, target, from, kind) {
   const sharedEnemy = enemiesOf(st, target).some((e) => atWar(st, from, e)) ? 0.2 : 0;
   if (kind === 'alliance') {
     if (atWar(st, target, from)) return 0;
-    const p = (rel - 25) / 60 + (ratio > 1 ? 0.15 : -0.1) - aggro * 0.2 + sharedEnemy;
+    const p = (rel - 25) / 60 + (ratio > 1 ? 0.15 : -0.1) - aggro * 0.2 + sharedEnemy + bonus;
     return Math.max(0, Math.min(0.95, p));
   }
   // 停戦
-  const p = (rel + 20) / 70 + (ratio > 1.3 ? 0.3 : ratio < 0.7 ? -0.2 : 0) - aggro * 0.15;
+  const p = (rel + 20) / 70 + (ratio > 1.3 ? 0.3 : ratio < 0.7 ? -0.2 : 0) - aggro * 0.15 + bonus + (personality(st, target) === 'cautious' && ratio > 1 ? 0.1 : 0);
   return Math.max(0, Math.min(0.95, p));
 }
 
@@ -102,11 +107,12 @@ export function sign(st, a, b, kind, extra = {}) {
   else log(st, `${nameOf(st, a)}と${nameOf(st, b)}が${TREATY_NAMES[kind]}を結んだ。`, involvesPlayer(st, a, b));
 }
 
-export function propose(st, from, to, kind) {
+export function propose(st, from, to, kind, hostageId = null) {
   if (treaty(st, from, to)) return { ok: false, reason: 'すでに条約があります' };
-  const p = acceptChance(st, to, from, kind);
+  const hostage = hostageId ? st.generals[hostageId] : null;
+  const p = acceptChance(st, to, from, kind, hostage);
   const ok = chance(st, p);
-  if (ok) sign(st, from, to, kind);
+  if (ok) { sign(st, from, to, kind); if (hostage) giveHostage(st, hostage.id, to); }
   else adjustRelation(st, from, to, -3);
   return { ok, chance: p };
 }
@@ -118,7 +124,9 @@ export function breakTreaty(st, from, to, { quiet = false } = {}) {
   delete nat(st, from).treaties[to];
   delete nat(st, to).treaties[from];
   adjustRelation(st, from, to, -40);
-  for (const n of Object.values(st.nations)) if (n.alive && n.id !== from && n.id !== to) adjustRelation(st, from, n.id, t === 'vassal' ? -2 : -5);
+  for (const n of Object.values(st.nations)) if (n.alive && n.id !== from && n.id !== to) adjustRelation(st, from, n.id, -2);
+  changeTrust(st, from, t === 'alliance' ? -25 : t === 'truce' ? -15 : fromWasVassal ? -5 : -10);
+  onTreatyBroken(st, from, to);
   if (!quiet) {
     const what = t === 'vassal' ? (fromWasVassal ? '従属関係（独立を宣言）' : '従属関係') : TREATY_NAMES[t];
     log(st, `${nameOf(st, from)}が${nameOf(st, to)}との${what}を破棄した。`, true);
@@ -134,6 +142,7 @@ export function declareWar(st, a, b, { reason = '' } = {}) {
   if (t) breakTreaty(st, a, b, { quiet: true });
   warsOf(st, a)[b] = { since: st.turn, taken: 0 };
   warsOf(st, b)[a] = { since: st.turn, taken: 0 };
+  endPact(st, a, b, true);
   adjustRelation(st, a, b, -20);
   log(st, `${nameOf(st, a)}が${nameOf(st, b)}に宣戦布告した。${t ? `（${TREATY_NAMES[t]}を破って）` : ''}${reason}`, involvesPlayer(st, a, b));
   // 参戦要請：守る側の味方が先、攻める側の味方も呼応する
@@ -161,6 +170,8 @@ export function joinWar(st, ally, caller, enemy) {
   if (treaty(st, ally, enemy)) breakTreaty(st, ally, enemy, { quiet: true });
   warsOf(st, ally)[enemy] = { since: st.turn, taken: 0 };
   warsOf(st, enemy)[ally] = { since: st.turn, taken: 0 };
+  endPact(st, ally, enemy, true);
+  changeTrust(st, ally, 4);
   adjustRelation(st, ally, enemy, -25);
   adjustRelation(st, ally, caller, 8);
   log(st, `${nameOf(st, ally)}が${nameOf(st, caller)}の要請に応じ、${nameOf(st, enemy)}との戦いに参戦した。`, involvesPlayer(st, ally, caller, enemy));
@@ -168,6 +179,7 @@ export function joinWar(st, ally, caller, enemy) {
 
 export function refuseCall(st, ally, caller) {
   adjustRelation(st, ally, caller, -25);
+  changeTrust(st, ally, -8);
   const t = treaty(st, ally, caller);
   if (t === 'alliance' && relation(st, ally, caller) < 0) {
     breakTreaty(st, caller, ally, { quiet: true });
@@ -211,6 +223,7 @@ export function peaceChance(st, from, to, terms) {
     default: p = 0;
   }
   if (nat(st, to).id === st.playerNation) return 1;
+  p += PERSONALITIES[personality(st, to)].peace ?? 0;
   // 厳しい条件は、実際に戦って成果を上げてから
   const harsh = ['demandGold', 'cede', 'vassal'].includes(terms.kind);
   if (harsh && st.turn - (w?.since ?? st.turn) < 2 && (warsOf(st, from)[to]?.taken ?? 0) <= 0) p *= 0.25;
@@ -247,6 +260,7 @@ export function applyPeace(st, from, to, terms) {
     desc = `${nameOf(st, to)}が${nameOf(st, from)}に臣従する`;
   }
   if (terms.kind !== 'vassal') sign(st, from, to, 'truce');
+  changeTrust(st, from, 1); changeTrust(st, to, 1);
   adjustRelation(st, from, to, 15);
   log(st, `${nameOf(st, from)}と${nameOf(st, to)}が和平を結んだ（${desc}）。`, involvesPlayer(st, from, to));
   return desc;
@@ -325,6 +339,7 @@ export function diplomacyTick(st) {
       n.lastTribute = paid;
     } else n.lastTribute = 0;
   }
+  statecraftTick(st);
   const alive = Object.values(st.nations).filter((n) => n.alive);
   for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) {
     const a = alive[i].id, b = alive[j].id;
@@ -417,6 +432,8 @@ export function aiDiplomacy(st, nid) {
     const p = annexChance(st, nid, v);
     if (p > 0.4) annexVassal(st, nid, v);
   }
+
+  out.push(...aiStatecraft(st, nid, { hegemon, areNeighbors, breakTreaty, declareWar, sign }));
 
   // 従来の同盟・停戦の申し入れ
   if (!chance(st, 0.12)) return out;

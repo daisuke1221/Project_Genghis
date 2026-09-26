@@ -315,7 +315,7 @@ export function subvertTargets(st, nid) {
   const out = [];
   const own = new Set(Object.values(st.provinces).filter((p) => p.owner === nid).map((p) => p.id));
   for (const g of Object.values(st.generals)) {
-    if (!g.alive || !g.nation || g.nation === nid || g.captiveOf || st.year - g.birth < 15) continue;
+    if (!g.alive || !g.nation || g.nation === nid || g.captiveOf || g.hostageOf || st.year - g.birth < 15) continue;
     if (!NEIGHBORS[g.province]?.some((q) => own.has(q))) continue;
     out.push(g);
   }

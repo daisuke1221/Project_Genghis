@@ -128,7 +128,7 @@ export function personnelDialog(app, pid) {
             ${st.nations[nid].rulerId === g.id ? '' : `<button class="btn small" data-rw="${g.id}">褒美(100金)</button>`}</td></tr>`).join('')}</table>
           <p class="muted">太守の政治力が高いほど、金・食糧の産出と建設速度が上がります。魅力が高いと民忠が上がります。忠誠が35を下回ると出奔し、不満の大きい太守は謀反を起こします。役職・特技の詳細は上部の「家臣」から。</p>
           <h3>在野の人材</h3>
-          ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>成功率</th><th></th></tr>
+          ${ronin.length ? `<table class="list"><tr><th>人物</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>軍師の見立て</th><th></th></tr>
             ${ronin.map((g) => `<tr><td>${esc(g.name)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${chanceText(st, nid, hireChance(st, nid, g), `hire:${g.id}`)}</td>
             <td>${g.hireTried === st.turn ? '<span class="muted">今季は断られた</span>' : `<button class="btn small" data-hire="${g.id}">登用</button>`}</td></tr>`).join('')}</table>` : '<p class="muted">この地方に在野の人材はいません。</p>'}
           <div class="row" style="margin-top:8px"><button class="btn" data-search="1">人材を探す（${SEARCH_COST}金）</button><span class="muted">成功すると在野の人物が見つかります。</span></div>`;
@@ -294,13 +294,17 @@ export function helpDialog() {
       <ul><li>徴兵：武将ごとに兵を集めます（兵数の上限は統率×30）。騎兵・弓騎兵には馬が必要です（牧場で生産）。</li>
       <li>出陣・移動：武将を選んで隣の地方へ。敵地なら合戦になります。守備兵のいない地方はそのまま占領できます。</li>
       <li>合戦はヘックスの戦場で行います。騎兵は2マス以上移動してから攻撃すると突撃ボーナス、敵を囲むと挟撃ボーナス。丘・森・城は防御に有利。攻撃側は20ターン以内に敵を全滅させるか本丸を占拠すれば勝利です。</li></ul>
+      <h3>外交の奥行き</h3>
+      <ul><li>各国の君主には気質（信義・背信・策謀・温厚・好戦・慎重・実利）があり、宿敵・同族・異教といった因縁が交渉に影響します。</li>
+      <li>条約を破ると貴国の「信用」が下がり、どの国も交渉に応じにくくなります。人質を添えると同盟・停戦が結ばれやすくなりますが、破れば人質は処断されます。</li>
+      <li>通商条約（関税なし・交易+10%）、朝貢の要求（毎季収入の10%・相互不可侵）、金・馬・地方の取引ができます。覇権国が現れると、対抗する国々が会盟を開きます。</li></ul>
       <h3>人事・家臣団</h3>
       <ul><li>上部の「家臣」で家臣の一覧・役職（宰相・軍師・大将軍）・特技を確認できます。役職は兼任できず、就くと忠誠が上がります。</li>
       <li>合戦・内政・調略で功績が貯まり、十人長→百人長→千人長→万人長と昇進させられます（兵の上限+5%/位階）。功績が届いたのに昇進させないと不満が出ます。</li>
       <li>忠誠は毎季、目標値（君主の魅力・相性・位階・役職・特技など）へ近づきます。35未満で出奔し、不満の大きい太守は謀反を起こします。</li>
       <li>敵地を選ぶと「調略」で敵将を引き抜いたり、次の合戦で寝返らせる内応を約束させたりできます。</li></ul>
       <h3>軍師</h3>
-      <ul><li>各種の成功率は、軍師がいないと「？」で見えません。軍師の政治力が高いほど正確に見通せます。</li>
+      <ul><li>成功率は数字では示されません。軍師がいると、各命令の見込みを言葉で助言してくれます（政治力が高いほど見立てが正確）。</li>
       <li>軍師は敵の調略を見破り（内通した家臣は家臣団で詰問・追放）、外交画面で「離間の計」、敵地の画面で「流言」を仕掛けられます（その季節は出陣不可）。</li>
       <li>地図の左上に、軍師の助言（謀反のおそれ・侵攻の気配・攻めどき・内政の不安など）が表示されます。</li></ul>
       <h3>後宮・王族</h3>
@@ -328,7 +332,7 @@ export function captivesDialog(app, gids) {
     width: '640px',
     body: (el) => {
       const render = () => {
-        el.innerHTML = `<p>合戦で次の武将を捕らえた。処遇を決めよ。</p><table class="list"><tr><th>武将</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>登用率</th><th>処遇</th></tr>
+        el.innerHTML = `<p>合戦で次の武将を捕らえた。処遇を決めよ。</p><table class="list"><tr><th>武将</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>軍師の見立て</th><th>処遇</th></tr>
           ${gids.map((id) => {
             const g = st.generals[id];
             const ch = recruitChance(st, nid, g);
@@ -371,6 +375,21 @@ export async function proposalDialog(app, pr) {
     title = '臣従の要求';
     text = '<p>「我が主君に臣従し、朝貢せよ。さもなくば、我が軍勢が貴国を踏みつぶすであろう」</p><p class="muted">受け入れると従属国となり、毎季収入の20%を朝貢します。拒めば戦争になります。</p>';
     buttons = [{ label: '拒絶する（開戦）', value: false }, { label: '臣従する', value: true, primary: true }];
+  } else if (pr.kind === 'gift') {
+    title = '贈物の使者';
+    text = `<p>「我が主君より、よしみの印として${pr.gold}金をお納めくだされ」</p><p class="muted">金と友好度が増えました。</p>`;
+    buttons = [{ label: 'ありがたく受け取る', value: true, primary: true }];
+  } else if (pr.kind === 'pact') {
+    title = '通商の使者';
+    text = '<p>「互いの隊商の往来を自由にし、ともに富み栄えようではないか」</p><p class="muted">通商条約：互いの関税がなくなり、交易の利益が10%増え、友好度が毎季上がります。</p>';
+  } else if (pr.kind === 'tribute') {
+    title = '朝貢の要求';
+    text = `<p>「${n.crowned ? '天に二つの日なく、地に二人の大ハーンなし。' : ''}我が主君に貢ぎ物を納めよ。さすれば貴国の安寧は保たれよう」</p><p class="muted">受け入れると、毎季収入の10%を朝貢し、互いに攻め込まない関係になります（従属とは違い、参戦の義務はありません）。拒むと戦争になるおそれがあります。</p>`;
+    buttons = [{ label: '拒絶する', value: false }, { label: '朝貢する', value: true, primary: true }];
+  } else if (pr.kind === 'summit') {
+    title = '会盟への招き';
+    text = `<p>「${pr.members.map((m) => esc(st.nations[m]?.name ?? '')).join('・')}の君主が会盟し、${esc(st.nations[pr.against]?.name ?? '')}に対抗することを誓った。貴国も盟に加わられよ」</p><p class="muted">加わると参加国すべてと同盟を結び、${esc(st.nations[pr.against]?.name ?? '')}との関係が悪化します。断ると参加国との関係が少し悪化します。</p>`;
+    buttons = [{ label: '断る', value: false }, { label: '盟に加わる', value: true, primary: true }];
   } else if (pr.coalition) {
     title = '包囲網への誘い';
     text = `<p>「強大化する${esc(st.nations[pr.coalition]?.name ?? '')}に対抗するため、我らと同盟を結ばれたし」</p>`;

@@ -34,7 +34,7 @@ export function adminDialog(app, pid) {
         const tagEff = (k) => {
           if (!g) return '';
           const e = commandEffect(st, pid, k, g);
-          if (k === 'convert') return `成功率${chanceText(st, nid, e.chance, `convert:${pid}:${g.id}`)}・民忠${e.loyalty}`;
+          if (k === 'convert') return `民忠${e.loyalty}${chanceText(st, nid, e.chance, `convert:${pid}:${g.id}`) ? `<br>${chanceText(st, nid, e.chance, `convert:${pid}:${g.id}`)}` : ''}`;
           return Object.entries(e).map(([key, v]) => `${{ loyalty: '民忠', order: '治安', irrigation: '治水', commerce: '商業' }[key]}+${v}`).join('・');
         };
         el.innerHTML = `<div class="row muted" style="gap:14px;margin-bottom:8px"><span>金 <b>${fmt(nat.gold)}</b></span><span>食糧 <b>${fmt(nat.food)}</b></span>

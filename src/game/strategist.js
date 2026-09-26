@@ -29,13 +29,28 @@ export function foresee(st, nid, p, key, bonus = 0) {
   return { lo, hi, by: s.name };
 }
 
-export function chanceText(st, nid, p, key, bonus = 0) {
+// 成功率は数字では示さず、軍師がいれば言葉で見立てを述べる（政治力が低いと見立てが外れることもある）
+export const ADVICE_WORDS = [
+  [0.85, 'まず間違いございません', 'sure'],
+  [0.65, 'うまくいくでしょう', 'good'],
+  [0.4, '五分五分かと', 'even'],
+  [0.2, '難しいでしょう', 'hard'],
+  [0, 'まず無理かと', 'nope'],
+];
+export function adviceWord(st, nid, p, key, bonus = 0) {
   const f = foresee(st, nid, p, key, bonus);
-  if (!f) return '<span class="muted" title="軍師がいないと見通せません">？</span>';
-  const lo = Math.round(f.lo * 100), hi = Math.round(f.hi * 100);
-  const t = hi - lo <= 2 ? `${Math.round(p * 100)}%` : `${lo}〜${hi}%`;
-  return `<span title="軍師${f.by}の見立て">${t}</span>`;
+  if (!f) return null;
+  const est = (f.lo + f.hi) / 2;
+  const [, word, cls] = ADVICE_WORDS.find(([t]) => est >= t);
+  return { word, cls, by: f.by };
 }
+export function chanceText(st, nid, p, key, bonus = 0) {
+  const a = adviceWord(st, nid, p, key, bonus);
+  if (!a) return '';
+  return `<span class="advice-tag ${a.cls}" title="軍師${a.by}の見立て">軍師「${a.word}」</span>`;
+}
+// ボタンなどに添えるとき
+export const adviceSuffix = (html) => (html ? ` ${html}` : '');
 
 // ---- 離間の計 ----
 export const DISCORD_COST = 400;
@@ -194,7 +209,8 @@ export function strategistAdvice(st, nid) {
     if (c.loyalty < 35) add(58, `${PROV_DEF[p.id].city}の民が不満を募らせています（民忠${c.loyalty}）。反乱に注意を。`);
   }
   const soldiers = Object.values(st.generals).filter((g) => g.alive && g.nation === nid).reduce((a, g) => a + (g.unit?.soldiers ?? 0), 0);
-  if (nat.food < soldiers * 0.25 && (st.season === 3 || st.season === 0)) add(70, '兵糧が心もとありません。秋の収穫まで持たないかもしれません。');
+  const net = (nat.lastIncome?.food ?? 0) - soldiers * 0.1;
+  if (net < 0 && nat.food < -net * 3) add(70, `兵糧が心もとありません。このままでは${Math.max(1, Math.floor(nat.food / -net))}季ほどで尽きます。`);
   const n = 1 + Math.floor(s.pol / 30);
   const seen = new Set();
   const lines = items.sort((a, b) => b.pri - a.pri).filter((x) => !seen.has(x.text) && seen.add(x.text)).slice(0, n).map((x) => x.text);
