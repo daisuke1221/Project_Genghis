@@ -9,6 +9,7 @@ import {
   commandCost, commandAvailable, commandEffect, doCommand, canAdminister,
 } from '../game/admin.js';
 import { chanceText } from '../game/strategist.js';
+import { plagueOf, famineOf, PLAGUE_LEVELS, FAMINE_KINDS, setQuarantine } from '../game/calamity.js';
 
 const STAT = { war: '武', pol: '政', cha: '魅' };
 const sign = (v) => (v > 0 ? `+${v}` : `${v}`);
@@ -34,6 +35,7 @@ export function adminDialog(app, pid) {
         const tagEff = (k) => {
           if (!g) return '';
           const e = commandEffect(st, pid, k, g);
+          if (k === 'cure') return chanceText(st, nid, e.chance, `cure:${pid}:${g.id}`) || '病を和らげる';
           if (k === 'convert') return `民忠${e.loyalty}${chanceText(st, nid, e.chance, `convert:${pid}:${g.id}`) ? `<br>${chanceText(st, nid, e.chance, `convert:${pid}:${g.id}`)}` : ''}`;
           return Object.entries(e).map(([key, v]) => `${{ loyalty: '民忠', order: '治安', irrigation: '治水', commerce: '商業' }[key]}+${v}`).join('・');
         };
@@ -46,6 +48,9 @@ export function adminDialog(app, pid) {
             <tr><td>商業</td><td>${c.commerce}</td><td>${statBar(c.commerce, 100, '#d4a94a')}</td><td class="small">金の収入+${Math.round(c.commerce / 4)}%</td></tr>
             <tr><td>信仰</td><td colspan="2">${RELIGIONS[rel].name}</td><td class="small">国教：${RELIGIONS[mine].name}${RELIGIONS[mine].tolerant ? '（寛容：異教徒も不満を持たない）' : rel !== mine ? (c.patron > st.turn ? `<span class="pos">（寺社保護中・あと${c.patron - st.turn}季）</span>` : '<span class="neg">（異教の支配：民忠の目標-10）</span>') : ''}</td></tr>
             <tr><td>文化</td><td colspan="2">${CULTURES[cul].name}</td><td class="small">${cul === nat.culture ? '自国と同じ文化' : '異民族の地。征服直後は民忠の目標が最大-6（年とともに薄れる）'}</td></tr>
+            <tr><td>災害</td><td colspan="2">${[plagueOf(st, pid) && `<span class="neg">${PLAGUE_LEVELS[plagueOf(st, pid).sev].name}（あと${plagueOf(st, pid).until - st.turn}季）</span>`, famineOf(st, pid) && `<span class="neg">飢饉・${FAMINE_KINDS[famineOf(st, pid).kind].name}（あと${famineOf(st, pid).until - st.turn}季）</span>`].filter(Boolean).join('<br>') || 'なし'}</td>
+              <td class="small"><button class="btn small ${c.quarantine ? 'active' : ''}" data-quarantine="1">封鎖：${c.quarantine ? 'ON' : 'OFF'}</button>
+              <span class="muted">関所を閉ざし、疫病の出入りを大きく減らす（隊商は止まり、金の収入-15%・民忠-2）</span></td></tr>
           </table>
           <div class="sect"><b>税率</b> <span class="row" style="display:inline-flex;gap:4px;margin-left:8px">${TAX_LEVELS.map((t, i) => `<button class="btn small ${c.tax === i ? 'active' : ''}" data-tax="${i}" title="${esc(t.desc)}">${t.name}</button>`).join('')}</span>
             <div class="muted">${esc(TAX_LEVELS[c.tax].desc)}${TAX_LEVELS[c.tax].loyalty ? `（民忠の目標${sign(TAX_LEVELS[c.tax].loyalty)}・治安${sign(TAX_LEVELS[c.tax].order)}）` : ''}</div></div>
@@ -65,6 +70,7 @@ export function adminDialog(app, pid) {
       el.onclick = (e) => {
         const t = e.target.closest('[data-tax]');
         if (t) { adminOf(st.provinces[pid].city).tax = Number(t.dataset.tax); audio.sfx('click'); render(); app.renderTopbar(); return; }
+        if (e.target.closest('[data-quarantine]')) { setQuarantine(st, pid, !st.provinces[pid].city.quarantine); audio.sfx('click'); render(); app.renderTopbar(); return; }
         const r = e.target.closest('[data-g]');
         if (r) { gid = r.dataset.g; render(); return; }
         const b = e.target.closest('[data-cmd]');

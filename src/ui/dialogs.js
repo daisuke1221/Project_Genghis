@@ -12,6 +12,7 @@ import { portrait } from './portrait.js';
 import { defenders, initialSupply, siegeAt } from '../game/siege.js';
 import { traitChips, rankLabel, loyaltyCell, compatCell } from './retainerDialog.js';
 import { canPromote, promoteCost, promote, roleOf, ROLES } from '../game/personnel.js';
+import { AUTHORITIES } from '../game/faith.js';
 import { chanceText, strategistOf } from '../game/strategist.js';
 import { unitTypesFor, mercOffers, hireMerc, MERC_TERM, fatigueOf } from '../game/warfare.js';
 import { fame, fameLabel, hireChanceWith, tryHireWith, stipendOf } from '../game/talent.js';
@@ -296,6 +297,10 @@ export function helpDialog() {
       <li>各軍の総大将（★）が敗走すると全軍の士気が大きく下がります。政治力の高い武将は計略（火計・偽報・鼓舞）を使えます。森に布陣した部隊は伏兵となり、敵から見えず、奇襲で大きな損害を与えます。</li></ul>
       <h3>史実イベント</h3>
       <ul><li>条件がそろうと、奥州合戦・第3回十字軍・クリルタイ・オトラル事件などの史実の出来事が起こります。自勢力が当事者なら選択肢から対応を選べ、他勢力は史実どおりに動きます。起きた出来事は「勢力」→「年表」で振り返れます。設定でオフにもできます。</li></ul>
+      <h3>信仰と災害</h3>
+      <ul><li>カトリック・正教・イスラーム・仏教には、教皇・総主教・カリフ・ラマという権威があり、座所（ローマ・コンスタンティノープル・バグダード・ラサ）を持つ国がその保護者になります。国ごとの「信任」が高いと同じ信仰の地方の民忠が上がり、尽きると破門されます。上部の「信仰」から寄進・贖罪・聖戦の呼びかけ・国教の改宗ができます。</li>
+      <li>異教徒が聖地や座所を奪うと、十字軍やジハードが呼びかけられ、同じ信仰の国々が加わって攻めてきます。座所を失った権威は移座（アヴィニョン・カイロなど）するか空位になります。</li>
+      <li>疫病は隣の地方や交易路を通って広がり、人口・金・民忠を奪い、武将も病に倒れます。都市の「内政命令・税率」から施療で手当てし、封鎖で広がりを抑えられます。蝗害・旱魃・冷害は1年続く飢饉を招き（施しで早く明ける）、地震は建物や城壁を壊します。寺社保護をしていると、災害による民の動揺が和らぎます。</li></ul>
       <h3>外交</h3>
       <ul><li>他国を攻めると宣戦布告になり、相手の同盟国・従属国が参戦してきます。同盟国の武将は、隣接する地方の合戦に援軍として加わります（地図上では「援」の印）。</li>
       <li>戦争中は和平交渉ができます（白紙講和・賠償金・地方の割譲・従属）。戦況が有利なほど厳しい条件が通ります。</li>
@@ -438,6 +443,12 @@ export async function proposalDialog(app, pr) {
     title = '朝貢の要求';
     text = `<p>「${n.crowned ? '天に二つの日なく、地に二人の大ハーンなし。' : ''}我が主君に貢ぎ物を納めよ。さすれば貴国の安寧は保たれよう」</p><p class="muted">受け入れると、毎季収入の10%を朝貢し、互いに攻め込まない関係になります（従属とは違い、参戦の義務はありません）。拒むと戦争になるおそれがあります。</p>`;
     buttons = [{ label: '拒絶する', value: false }, { label: '朝貢する', value: true, primary: true }];
+  } else if (pr.kind === 'holywar') {
+    const hw = (st.holyWars ?? []).find((h) => h.id === pr.hw);
+    const A = AUTHORITIES[pr.rel];
+    title = `${A.holyWar}の呼びかけ`;
+    text = `<p>${A.title}が${esc(hw?.why ?? '')}を掲げ、<b>${esc(st.nations[pr.target]?.name ?? '')}</b>への${A.holyWar}を呼びかけている。「信仰を同じくする者よ、武器を取れ」</p><p class="muted">加わると${esc(st.nations[pr.target]?.name ?? '')}に宣戦し、信任+10・兵の訓練度+5。目的を果たせば信任+15と褒賞300金。断ると信任-8。</p>`;
+    buttons = [{ label: '応じない', value: false }, { label: `${A.holyWar}に加わる`, value: true, primary: true }];
   } else if (pr.kind === 'summit') {
     title = '会盟への招き';
     text = `<p>「${pr.members.map((m) => esc(st.nations[m]?.name ?? '')).join('・')}の君主が会盟し、${esc(st.nations[pr.against]?.name ?? '')}に対抗することを誓った。貴国も盟に加わられよ」</p><p class="muted">加わると参加国すべてと同盟を結び、${esc(st.nations[pr.against]?.name ?? '')}との関係が悪化します。断ると参加国との関係が少し悪化します。</p>`;

@@ -10,6 +10,9 @@ import * as D from './ui/dialogs.js';
 import * as X from './ui/extraDialogs.js';
 import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
 import { adminDialog } from './ui/adminDialog.js';
+import { faithDialog } from './ui/faithDialog.js';
+import { calamityTags } from './game/calamity.js';
+import { AUTHORITIES, seatOf } from './game/faith.js';
 import { retainerDialog, subvertDialog } from './ui/retainerDialog.js';
 import { TRAITS, ROLES, RANKS, roleOf, rebelRisk, subvertTargets, ensurePersonnel } from './game/personnel.js';
 import { strategistAdvice, strategistOf, rumorTargets, rumorAvailable, rumorChance, spreadRumor, chanceText, RUMOR_COST } from './game/strategist.js';
@@ -273,6 +276,7 @@ class App {
         <button class="btn" data-a="retainers">家臣</button>
         <button class="btn" data-a="research">研究</button>
         <button class="btn" data-a="harem">後宮</button>
+        <button class="btn" data-a="faith">信仰</button>
         <button class="btn" data-a="diplo">外交</button>
         <button class="btn" data-a="nations">勢力</button>
         <button class="btn" data-a="save">記録</button>
@@ -290,6 +294,7 @@ class App {
       if (a === 'retainers') { await retainerDialog(this); this.refresh(); }
       if (a === 'research') { await X.researchDialog(this); this.refresh(); }
       if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
+      if (a === 'faith') { await faithDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
       if (a === 'settings') D.settingsDialog(this);
@@ -342,7 +347,8 @@ class App {
         <span>人口</span><span>${fmt(c.pop)} / ${fmt(y.popCap)}</span>
         <span>民忠</span><span>${c.loyalty} ${statBar(c.loyalty)}</span>
         <span>治安</span><span>${adminOf(c).order} ${statBar(c.order, 100, '#7aa0d8')}</span>
-        <span>信仰</span><span>${RELIGIONS[provReligion(st, pid)].name}${p.owner && provReligion(st, pid) !== nationReligion(st, p.owner) && !RELIGIONS[nationReligion(st, p.owner)].tolerant && !(c.patron > st.turn) ? ' <span class="neg">異教</span>' : ''}</span>
+        <span>信仰</span><span>${RELIGIONS[provReligion(st, pid)].name}${p.owner && provReligion(st, pid) !== nationReligion(st, p.owner) && !RELIGIONS[nationReligion(st, p.owner)].tolerant && !(c.patron > st.turn) ? ' <span class="neg">異教</span>' : ''}${Object.entries(AUTHORITIES).filter(([r]) => seatOf(st, r) === pid).map(([, a]) => ` <span class="role-tag">${a.title}の座所</span>`).join('')}</span>
+        ${calamityTags(st, pid).length ? `<span>災害</span><span class="neg">${calamityTags(st, pid).join('・')}</span>` : ''}
         ${own ? `<span>税率・開発</span><span>${TAX_LEVELS[c.tax].name}・治水${c.irrigation}・商業${c.commerce}</span>` : ''}
         <span>城壁</span><span>${WALLS[c.walls].name}${c.wallProgress !== null ? `（建設中 ${Math.round(c.wallProgress * 100)}%）` : ''}</span>
         <span>馬</span><span>${fmt(c.horses)}</span>

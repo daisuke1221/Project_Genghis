@@ -6,6 +6,7 @@ import { PROV_DEF, nationProvinces, nationGenerals, treaty, relation, log } from
 import { adjustRelation, changeOwner, checkNationAlive, killGeneral } from './military.js';
 import { hasTrait } from './personnel.js';
 import { nationReligion, RELIGIONS } from './admin.js';
+import { faithBonds, faithOnTreatyBroken } from './faith.js';
 
 const nat = (st, id) => st.nations[id];
 const nameOf = (st, id) => st.nations[id]?.name ?? '';
@@ -50,6 +51,7 @@ export function bonds(st, a, b) {
   if (na && nb && na.culture === nb.culture) out.push(['同族', 0.08]);
   const ra = nationReligion(st, a), rb = nationReligion(st, b);
   if (ra !== rb && !RELIGIONS[ra].tolerant && !RELIGIONS[rb].tolerant) out.push(['異教', -0.08]);
+  out.push(...faithBonds(st, a, b));
   return out;
 }
 // 新規ゲーム：宿敵どうしは関係が悪い
@@ -162,6 +164,7 @@ export function returnHostage(st, g, note = '') {
 }
 // 条約を破った側の人質は処断され、破られた側の人質は返される
 export function onTreatyBroken(st, from, to) {
+  faithOnTreatyBroken(st, from, to);
   for (const g of hostagesFrom(st, from, to)) {
     log(st, `${nameOf(st, from)}が約束を破ったため、人質の${g.name}は${nameOf(st, to)}に処断された。`, true);
     killGeneral(st, g.id);

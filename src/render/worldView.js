@@ -6,6 +6,7 @@ import { PROVINCES, PROVINCE_TERRAIN, CULTURES } from '../game/data.js';
 import { MAP_W, MAP_H, GRID_W, GRID_H, RES, cells, heightAt, PROV_POS, provinceAt, cellXZ, fbm } from '../game/geo.js';
 import { NATION_DEF, generalsIn } from '../game/state.js';
 import { path as tradePath } from '../game/trade.js';
+import { calamityTags } from '../game/calamity.js';
 import { bindPointer, pickAt, tweenFn } from './engine.js';
 import * as M from './models.js';
 
@@ -221,7 +222,8 @@ export class WorldView {
       const sg = st.sieges?.[p.id];
       mk.label.innerHTML = `<div class="nm"><span class="dot" style="background:${color}"></span>${p.city}</div>` +
         (owner ? `<div class="troops">兵 ${soldiers.toLocaleString()}${gens ? `・将${gens}` : ''}</div>` : '<div class="troops">空白地</div>') +
-        (sg ? `<div class="siege-tag" style="border-color:${st.nations[sg.att]?.color}">⚔ ${st.nations[sg.att]?.name ?? ''}が包囲中</div>` : '');
+        (sg ? `<div class="siege-tag" style="border-color:${st.nations[sg.att]?.color}">⚔ ${st.nations[sg.att]?.name ?? ''}が包囲中</div>` : '') +
+        (calamityTags(st, p.id).length ? `<div class="calamity-tag">${calamityTags(st, p.id).join('・')}</div>` : '');
       this.setSiegeRing(p.id, sg ? st.nations[sg.att]?.color : null);
       mk.label.className = `city-label${isCap ? ' capital' : ''}`;
     }

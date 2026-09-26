@@ -226,6 +226,7 @@ export function tradeTick(st, onLog) {
       if (mine) onLog?.(`${fromName}→${toName}の交易路は、情勢の変化で途絶えた。`, true);
       continue;
     }
+    if (st.provinces[r.from].city.quarantine || st.provinces[r.to].city.quarantine) { r.last = { quarantine: true, profit: 0, turn: st.turn }; continue; } // 封鎖中は隊商が出入りできない
     const c = st.provinces[r.from].city;
     const outGood = PDEF[r.from].specialty;
     const qty = Math.min(routeCapacity(st, r.from), c.goods[outGood] ?? 0);

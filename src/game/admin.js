@@ -4,6 +4,8 @@ import { chance, rnd, pick } from './rng.js';
 import { PROV_CULTURE } from './tech.js';
 import { hasTrait, chancellorBonus, gainExp, addMerit } from './personnel.js';
 import { knows } from './research.js';
+import { calamityMods, plagueOf, famineOf, cureChance, cure, relieveFamine, aiQuarantine } from './calamity.js';
+import { faithMods, onConverted } from './faith.js';
 
 export const TAX_LEVELS = [
   { name: '軽税', mul: 0.6, loyalty: 10, order: 4, grow: 1.3, desc: '税収60%・民忠↑・人口が増えやすい' },
@@ -98,16 +100,20 @@ export function adminMods(st, pid) {
     order.push(['民忠', Math.round((c.loyalty - 50) / 4)]);
     if (T.order) order.push([T.name, T.order]);
     if (st.sieges?.[pid]) order.push(['包囲', -15]);
+    loyalty.push(...faithMods(st, pid));
   }
+  const cm = calamityMods(st, pid);
+  loyalty.push(...cm.loyalty);
+  order.push(...cm.order);
   const sum = (a) => a.reduce((s, [, v]) => s + v, 0);
   return {
     loyalty, order,
     loyaltyAdj: sum(loyalty),
     orderTarget: Math.max(0, Math.min(100, 40 + sum(order))),
     taxMul: T.mul,
-    goldMul: (0.85 + c.order / 400) * (1 + c.commerce / 400) * (1 + chancellorBonus(st, nid)) * (govMerchant(st, p) ? 1.1 : 1),
-    farmMul: 1 + c.irrigation / 400,
-    grow: T.grow,
+    goldMul: (0.85 + c.order / 400) * (1 + c.commerce / 400) * (1 + chancellorBonus(st, nid)) * (govMerchant(st, p) ? 1.1 : 1) * cm.goldMul,
+    farmMul: (1 + c.irrigation / 400) * cm.farmMul,
+    grow: T.grow * cm.grow,
   };
 }
 
@@ -124,8 +130,9 @@ export const COMMANDS = {
   commerce: { name: '商業振興', stat: 'pol', desc: '市を開き商人を招く。金の収入が増える' },
   patronize: { name: '寺社保護', stat: 'cha', desc: '土地の信仰を手厚く保護する（2年間、民忠の目標+6・異教の不満なし）' },
   convert: { name: '布教', stat: 'pol', desc: '国教を広める。成功すれば地方の信仰が変わるが、民忠が下がる' },
+  cure: { name: '施療', stat: 'pol', desc: '医師と薬を集めて疫病の手当てをする。成功すれば病が一段軽くなり、失敗してもその季節の被害が半分になる' },
 };
-export const COMMAND_ORDER = ['alms', 'patrol', 'irrigate', 'commerce', 'patronize', 'convert'];
+export const COMMAND_ORDER = ['alms', 'patrol', 'irrigate', 'commerce', 'patronize', 'convert', 'cure'];
 
 export function commandCost(st, pid, kind) {
   const c = st.provinces[pid].city;
@@ -136,6 +143,7 @@ export function commandCost(st, pid, kind) {
     case 'commerce': return { gold: 150 + Math.round(adminOf(c).commerce * 3) };
     case 'patronize': return { gold: 200 + Math.round(c.pop * 0.01) };
     case 'convert': return { gold: 300 + Math.round(c.pop * 0.01) };
+    case 'cure': return { gold: 150 + Math.round(c.pop * 0.008) };
   }
   return {};
 }
@@ -158,6 +166,7 @@ export function commandAvailable(st, pid, kind) {
     if (RELIGIONS[mine].tolerant) return { ok: false, reason: `${RELIGIONS[mine].name}は布教をしません` };
     if (provReligion(st, pid) === mine) return { ok: false, reason: 'すでに同じ信仰です' };
   }
+  if (kind === 'cure' && !plagueOf(st, pid)) return { ok: false, reason: '疫病は起きていません' };
   return { ok: true };
 }
 
@@ -168,12 +177,13 @@ export function commandEffect(st, pid, kind, g) {
   const s = g[COMMANDS[kind].stat];
   const troops = (g.unit?.soldiers ?? 0) > 0;
   switch (kind) {
-    case 'alms': return { loyalty: Math.round(4 + s / 12) };
+    case 'alms': return { loyalty: Math.round(4 + s / 12) + (famineOf(st, pid) ? 4 : 0) };
     case 'patrol': return { order: Math.round(5 + s / 8 + (troops ? 5 : 0)) };
     case 'irrigate': return { irrigation: Math.round((6 + s / 8) * (knows(st, st.provinces[pid].owner, 'qanat') ? 1.5 : 1)) };
     case 'commerce': return { commerce: Math.round(6 + s / 8) };
     case 'patronize': return { loyalty: Math.round(2 + s / 25) };
     case 'convert': return { chance: Math.min(0.8, 0.15 + s / 350 + (st.provinces[pid].city.loyalty - 50) / 250), loyalty: -8 };
+    case 'cure': return { chance: cureChance(st, pid, g) };
   }
   return {};
 }
@@ -193,7 +203,7 @@ export function doCommand(st, pid, kind, gid) {
   const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
   let text = '';
   switch (kind) {
-    case 'alms': c.loyalty = clamp(c.loyalty + e.loyalty); c.almsUntil = st.turn + 4; text = `民忠+${e.loyalty}`; break;
+    case 'alms': c.loyalty = clamp(c.loyalty + e.loyalty); c.almsUntil = st.turn + 4; text = `民忠+${e.loyalty}${relieveFamine(st, pid) ? '・飢えた民を救い、飢饉が早く明ける' : ''}`; break;
     case 'patrol': c.order = clamp(c.order + e.order); text = `治安+${e.order}`; break;
     case 'irrigate': c.irrigation = clamp(c.irrigation + e.irrigation); text = `治水+${e.irrigation}`; break;
     case 'commerce': c.commerce = clamp(c.commerce + e.commerce); text = `商業+${e.commerce}`; break;
@@ -204,9 +214,11 @@ export function doCommand(st, pid, kind, gid) {
         p.religion = nationReligion(st, p.owner);
         delete c.patron;
         text = `布教に成功し、この地方は${RELIGIONS[p.religion].name}に改宗した（民忠${e.loyalty}）`;
+        onConverted(st, p.owner);
       } else text = `布教は実らなかった（民忠${e.loyalty}）`;
       break;
     }
+    case 'cure': text = cure(st, pid, g).text; break;
   }
   if (c.acts?.turn !== st.turn) c.acts = { turn: st.turn, done: [] };
   c.acts.done.push(kind);
@@ -262,6 +274,7 @@ export function adminOnConquest(st, pid) {
 // ---- AI（委任都市を含む） ----
 export function aiAdmin(st, nid, pids, { reserve = 300 } = {}) {
   const nat = st.nations[nid];
+  aiQuarantine(st, nid, pids);
   for (const pid of pids) {
     const p = st.provinces[pid];
     if (p.owner !== nid) continue;
@@ -277,6 +290,8 @@ export function aiAdmin(st, nid, pids, { reserve = 300 } = {}) {
     const best = (stat) => gens.reduce((a, b) => (b[stat] > a[stat] ? b : a));
     const m = adminMods(st, pid);
     const want = [];
+    if (plagueOf(st, pid)) want.push('cure');
+    if (famineOf(st, pid) && nat.food > 2000) want.push('alms');
     if (c.loyalty < 45 && nat.food > 3000) want.push('alms');
     if (c.order < 45) want.push('patrol');
     if (m.loyalty.some(([l]) => l.startsWith('異教'))) want.push(nat.gold > 2500 && chance(st, 0.3) ? 'convert' : 'patronize');

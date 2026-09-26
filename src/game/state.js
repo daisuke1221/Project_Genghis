@@ -9,6 +9,7 @@ import { initTechs, setTechNamer } from './tech.js';
 import { initMarket } from './trade.js';
 import { ensurePersonnel, initPersonnel, rankCapMul } from './personnel.js';
 import { initStatecraft } from './statecraft.js';
+import { initFaith } from './faith.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
@@ -144,6 +145,7 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
     }
   }
   initStatecraft(st);
+  initFaith(st);
   initRoyals(st, consorts, princesses);
   initTechs(st);
   initMarket(st);
@@ -264,6 +266,7 @@ export function deserialize(s) {
     st.version = 2;
   }
   for (const g of Object.values(st.generals)) ensurePersonnel(g);
+  if (!st.faith) initFaith(st);
   return st;
 }
 
