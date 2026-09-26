@@ -7,6 +7,7 @@ import {
   COLS, ROWS, BATTLE_TERRAIN, hkey, tileOf, unitAt, reachable, moveUnit, attack, targetsFrom, wait as waitUnit,
   endPhase, aiStep, retreat, battleResult, activeUnits, estimateDamage, attackRange,
   WEATHER, TACTICS, tacticOptions, tacticChance, useTactic, duelTargets, duel, duelAcceptChance, duelWinChance,
+  damageFactors, defenseFactors,
 } from '../game/battle.js';
 import { PROV_DEF } from '../game/state.js';
 import { bindPointer, pickAt, tween, tweenFn, wait, easeOut } from './engine.js';
@@ -255,6 +256,8 @@ export class BattleView {
     let html = `<div class="row" style="justify-content:space-between"><span class="pos">自軍 ${my.toLocaleString()}</span><span class="neg">敵軍 ${en.toLocaleString()}</span></div>`;
     const W = WEATHER[this.b.weather];
     if (W.desc) html += `<div class="muted">${W.glyph} ${W.name}：${W.desc}</div>`;
+    const land = { steppe: '草原：騎馬の攻撃+15%', mountain: '山岳：騎馬の白兵-10%・歩兵の白兵+10%', forest: '森林地帯：歩兵の白兵+10%' }[this.b.terrain];
+    if (land) html += `<div class="muted">${land}</div>`;
     if (this.b.notes?.length) html += `<div class="muted">${this.b.notes.slice(-3).join('<br>')}</div>`;
     if (this.tacticMode === 'duel' && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">一騎討ち：応じる確率 ${Math.round(duelAcceptChance(this.b, this.selected, u) * 100)}%・勝率 約${Math.round(duelWinChance(this.selected, u) * 100)}%</div>`;
     else if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += `<div class="pos">${TACTICS[this.tacticMode].name}の成功率：${Math.round(tacticChance(this.b, this.selected, this.tacticMode, u) * 100)}%</div>`;
@@ -270,12 +273,23 @@ export class BattleView {
         <span>地形</span><span>${BATTLE_TERRAIN[tt].name}</span></div></div>`;
       if (this.selected && u.side !== this.playerSide && this.selected.side === this.playerSide) {
         const est = Math.round(estimateDamage(this.b, this.selected, u));
-        html += `<div class="muted">予想損害：約${est.toLocaleString()}</div>`;
+        const fmtF = ([label, m]) => `<div class="${m >= 1 ? 'pos' : 'neg'}">${label} ×${m.toFixed(2)}</div>`;
+        const af = damageFactors(this.b, this.selected, u).factors;
+        const df = defenseFactors(this.b, u).factors;
+        html += `<div class="sect"><b>予想損害：約${est.toLocaleString()}</b><div class="muted" style="font-size:12px">${[...af, ...df].map(fmtF).join('') || '補正なし'}</div></div>`;
       }
     } else if (this.hoverHex) {
       const t = tileOf(this.b, ...this.hoverHex).t;
       const T = BATTLE_TERRAIN[t];
-      html += `<div class="sect">${T.name}：防御×${(t === 'castle' || t === 'keep') ? `${(1.1 + 0.3 * this.b.walls).toFixed(1)}（守備側）` : T.def}　移動${T.cost}</div>`;
+      const notes = {
+        plain: '見通しが良く、騎馬が突撃しやすい',
+        forest: '騎馬は動きにくく攻撃力が落ちる。歩兵は守りやすい。伏兵を置ける。火計に弱い',
+        hill: '高所から攻めると+20%（弓+15%・射程+1）。坂の下からの攻撃は-15%、突撃も弱まる。歩兵は守りやすい',
+        river: '川の中から攻めると-30%。渡った直後の攻撃は-15%。守りにも不利',
+        castle: '守備側は城壁の分だけ守りが堅い。攻撃側は入りにくい',
+        keep: '攻撃側が占拠すれば勝利',
+      }[t];
+      html += `<div class="sect">${T.name}：防御×${(t === 'castle' || t === 'keep') ? `${(1.1 + 0.3 * this.b.walls).toFixed(1)}（守備側）` : T.def}　移動${T.cost}${t === 'forest' ? '（騎馬3）' : ''}<div class="muted" style="font-size:12px">${notes}</div></div>`;
     }
     box.innerHTML = html;
   }

@@ -94,6 +94,19 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
     if (lost) b.notes.push(`冬の遠征で攻撃側は凍傷により${lost}の兵を失った`);
   }
   if (starving) { for (const u of dfd) u.morale -= 20; b.notes.push('守備側は兵糧が尽き、士気が落ちている'); }
+  // 険しい行軍：山岳は誰でも、砂漠の夏は砂漠に慣れない者が消耗する
+  if (!field) {
+    const desertFolk = (nid) => ['islamic', 'indian'].includes(st.nations[nid]?.culture);
+    let lost = 0;
+    let why = '';
+    for (const u of att) {
+      let r = 0;
+      if (def.terrain === 'mountain') { r = u.nomad ? 0.04 : 0.03; why = '険しい山道の行軍'; }
+      if (def.terrain === 'desert' && st.season === 1 && !desertFolk(u.nation)) { r = Math.max(r, 0.05); why = '炎天下の砂漠の行軍'; }
+      if (r) { const l = Math.round(u.soldiers * r); u.soldiers -= l; u.start = u.soldiers; u.morale -= 3; lost += l; }
+    }
+    if (lost) b.notes.push(`${why}で攻撃側は${lost}の兵を失った`);
+  }
   deploy(b, att, 'att');
   deploy(b, dfd, 'def');
   b.units = [...att, ...dfd];
@@ -249,6 +262,7 @@ export function moveUnit(b, u, c, r) {
   if (!n) return null;
   const path = pathTo(reach, c, r);
   u.movedDist = path.length - 1;
+  u.crossed = path.slice(1).some(([pc, pr]) => tileOf(b, pc, pr).t === 'river');
   u.c = c; u.r = r; u.moved = true;
   const ev = { type: 'move', id: u.id, path, revealed: [] };
   if (u.hidden && tileOf(b, c, r).t !== 'forest') u.hidden = false;
@@ -276,31 +290,64 @@ function power(u) {
   const T = UNIT_TYPES[u.type];
   return u.soldiers * T.atk * (0.6 + u.training / 250) * (0.75 + (u.war * 0.6 + u.lead * 0.4) / 250) * (0.6 + Math.max(0, u.morale) / 250);
 }
-function defMul(b, u) {
+const isMounted = (u) => u.type === 'cav' || u.type === 'harch';
+const isFoot = (u) => u.type === 'inf' || u.type === 'arch';
+
+// 防御側の倍率と、その内訳（表示用）
+export function defenseFactors(b, u) {
   const T = UNIT_TYPES[u.type];
   const tt = tileOf(b, u.c, u.r).t;
-  let d = T.def * BATTLE_TERRAIN[tt].def * (0.8 + u.lead / 250);
-  if (isCastle(tt) && u.side === 'def') d *= 1.1 + 0.3 * b.walls + (tt === 'keep' ? 0.1 : 0);
-  if (u.commander) d *= 1.1;
-  return d;
+  const f = [];
+  let d = T.def * (0.8 + u.lead / 250);
+  const td = BATTLE_TERRAIN[tt].def;
+  if (td !== 1) { d *= td; f.push([`${BATTLE_TERRAIN[tt].name}で守る`, 1 / td]); }
+  if (isCastle(tt) && u.side === 'def') { const m = 1.1 + 0.3 * b.walls + (tt === 'keep' ? 0.1 : 0); d *= m; f.push(['城に拠る', 1 / m]); }
+  if (isFoot(u) && (tt === 'forest' || tt === 'hill')) { d *= 1.1; f.push(['歩兵は険しい地形に強い', 1 / 1.1]); }
+  if (isMounted(u) && tt === 'forest') { d *= 0.85; f.push(['騎馬は森で守りにくい', 1 / 0.85]); }
+  if (u.commander) { d *= 1.1; f.push(['総大将の親衛', 1 / 1.1]); }
+  return { mul: d, factors: f };
 }
+function defMul(b, u) { return defenseFactors(b, u).mul; }
 
-export function estimateDamage(b, a, t, from = [a.c, a.r], movedDist = a.movedDist) {
+// 攻撃の倍率と内訳。from は攻撃する位置、movedDist はその手番の移動距離
+export function damageFactors(b, a, t, from = [a.c, a.r], movedDist = a.movedDist, crossed = a.crossed) {
   const dist = hexDist(from[0], from[1], t.c, t.r);
   const ranged = dist > 1;
-  let dmg = power(a) * 0.1 / defMul(b, t);
-  const castleTarget = isCastle(tileOf(b, t.c, t.r).t) && t.side === 'def';
-  if (!ranged && (a.type === 'cav' || a.type === 'harch') && movedDist >= 2) dmg *= 1.3;
-  if (ranged) dmg *= b.weather === 'rain' ? 0.5 : 0.8;
-  if (a.hidden) dmg *= 1.5; // 伏兵の奇襲
-  if (!ranged && UNIT_TYPES[a.type].range > 1) dmg *= 0.6;
-  if (a.type === 'siege') dmg *= castleTarget ? 3 : 0.5;
-  else if (ranged && castleTarget) dmg *= 0.6;
+  const at = tileOf(b, from[0], from[1]).t, tt = tileOf(b, t.c, t.r).t;
+  const f = [];
+  const add = (label, m) => { if (m !== 1) f.push([label, m]); };
+  const castleTarget = isCastle(tt) && t.side === 'def';
+  const uphill = tt === 'hill' && at !== 'hill';
+  if (!ranged && isMounted(a) && movedDist >= 2) add(uphill || at === 'forest' ? '突撃（坂・森で勢いが削がれる）' : '騎馬の突撃', uphill || at === 'forest' ? 1.1 : 1.3);
+  if (ranged) add(b.weather === 'rain' ? '雨で弓が湿る' : '射撃', b.weather === 'rain' ? 0.5 : 0.8);
+  if (a.hidden) add('伏兵の奇襲', 1.5);
+  if (!ranged && UNIT_TYPES[a.type].range > 1) add('弓兵の白兵戦', 0.6);
+  if (a.type === 'siege') add(castleTarget ? '攻城兵器で城を攻める' : '攻城兵器の野戦', castleTarget ? 3 : 0.5);
+  else if (ranged && castleTarget) add('城壁越しの射撃', 0.6);
+  // 高低差
+  if (at === 'hill' && tt !== 'hill') add('高所から攻める', ranged ? 1.15 : 1.2);
+  else if (!ranged && uphill) add('坂の下から攻め上がる', 0.85);
+  // 渡河
+  if (!ranged && at === 'river') add('川の中から攻める', 0.7);
+  else if (!ranged && crossed && at !== 'river') add('渡河直後で隊列が乱れている', 0.85);
+  // 兵種と地形の相性
+  if (isMounted(a) && b.terrain === 'steppe') add('草原の騎馬', 1.15);
+  if (isMounted(a) && !ranged && (at === 'forest' || tt === 'forest')) add('騎馬は森で動きにくい', 0.75);
+  if (isMounted(a) && !ranged && b.terrain === 'mountain') add('山岳で騎馬が活きない', 0.9);
+  if (isFoot(a) && !ranged && (b.terrain === 'mountain' || b.terrain === 'forest')) add('険しい地に慣れた歩兵', 1.1);
   const flank = hexNeighbors(t.c, t.r).filter(([c, r]) => {
     const x = unitAt(b, c, r);
     return x && x !== a && x.side === a.side;
   }).length;
-  dmg *= 1 + 0.12 * flank;
+  if (flank) add(`挟撃（味方${flank}隊）`, 1 + 0.12 * flank);
+  let mul = 1;
+  for (const [, m] of f) mul *= m;
+  return { mul, factors: f, ranged };
+}
+
+export function estimateDamage(b, a, t, from = [a.c, a.r], movedDist = a.movedDist) {
+  const { mul } = damageFactors(b, a, t, from, movedDist, from[0] === a.c && from[1] === a.r ? a.crossed : false);
+  const dmg = power(a) * 0.1 / defMul(b, t) * mul;
   return Math.min(t.soldiers, dmg);
 }
 
@@ -381,7 +428,7 @@ export function endPhase(b) {
     if (b.turn > b.maxTurns) { b.over = true; b.winner = 'def'; b.reason = 'timeout'; return; }
   }
   for (const u of activeUnits(b, b.side)) {
-    u.moved = false; u.acted = false; u.movedDist = 0;
+    u.moved = false; u.acted = false; u.movedDist = 0; u.crossed = false;
     u.morale = Math.min(100, u.morale + 3);
     if (b.weather === 'snow' && !u.nomad) u.morale -= 2;
     if (b.weather === 'heat' && u.side === 'att') u.morale -= 2;
