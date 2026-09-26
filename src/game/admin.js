@@ -2,6 +2,7 @@
 import { PROVINCES, NATIONS, CULTURES } from './data.js';
 import { chance, rnd, pick } from './rng.js';
 import { PROV_CULTURE } from './tech.js';
+import { hasTrait, chancellorBonus, gainExp, addMerit } from './personnel.js';
 
 export const TAX_LEVELS = [
   { name: '軽税', mul: 0.6, loyalty: 10, order: 4, grow: 1.3, desc: '税収60%・民忠↑・人口が増えやすい' },
@@ -90,6 +91,7 @@ export function adminMods(st, pid) {
     const barracks = p.city.grid.filter((t) => t.b?.type === 'barracks' && t.b.progress >= 1).length;
     if (barracks) order.push(['兵舎', barracks * 4]);
     order.push(gov ? ['太守の武力', Math.round((gov.war - 50) / 5)] : ['太守不在', -5]);
+    if (gov && hasTrait(gov, 'benevolent')) loyalty.push(['太守の仁政', 5]);
     order.push(['民忠', Math.round((c.loyalty - 50) / 4)]);
     if (T.order) order.push([T.name, T.order]);
     if (st.sieges?.[pid]) order.push(['包囲', -15]);
@@ -100,10 +102,15 @@ export function adminMods(st, pid) {
     loyaltyAdj: sum(loyalty),
     orderTarget: Math.max(0, Math.min(100, 40 + sum(order))),
     taxMul: T.mul,
-    goldMul: (0.85 + c.order / 400) * (1 + c.commerce / 400),
+    goldMul: (0.85 + c.order / 400) * (1 + c.commerce / 400) * (1 + chancellorBonus(st, nid)) * (govMerchant(st, p) ? 1.1 : 1),
     farmMul: 1 + c.irrigation / 400,
     grow: T.grow,
   };
+}
+
+function govMerchant(st, p) {
+  const g = p.governorId ? st.generals[p.governorId] : null;
+  return g && hasTrait(g, 'merchant');
 }
 
 // ---- 内政命令 ----
@@ -203,7 +210,8 @@ export function doCommand(st, pid, kind, gid) {
   g.moved = true;
   // 経験：内政に使った能力が少しずつ伸びる
   const stat = COMMANDS[kind].stat;
-  if (g[stat] < 100 && chance(st, 0.12)) g[stat] += 1;
+  gainExp(st, g, stat, 25);
+  addMerit(g, 3);
   return { ok: true, text };
 }
 

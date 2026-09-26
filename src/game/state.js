@@ -7,6 +7,7 @@ import { createCity, aiDevelopCity, cityYields, bestTile, startBuild } from './c
 import { initRoyals, setRoyalHooks } from './royal.js';
 import { initTechs, setTechNamer } from './tech.js';
 import { initMarket } from './trade.js';
+import { ensurePersonnel, initPersonnel, rankCapMul } from './personnel.js';
 
 export const PROV_DEF = Object.fromEntries(PROVINCES.map((p) => [p.id, p]));
 export const NATION_DEF = Object.fromEntries(NATIONS.map((n) => [n.id, n]));
@@ -113,6 +114,7 @@ export function newGame({ playerNation = 'kiyat', seed = (Date.now() & 0x7ffffff
     }
   }
 
+  initPersonnel(st);
   // 初期兵力
   for (const g of Object.values(st.generals)) {
     if (!g.nation || age(st, g) < 15) continue;
@@ -164,6 +166,8 @@ export function addGeneral(st, g) {
     loyalty: g.loyalty ?? 70, family: !!g.family, unit: g.unit ?? null,
     alive: true, moved: false,
   };
+  if (g.named) st.generals[id].named = true;
+  ensurePersonnel(st.generals[id]);
   return st.generals[id];
 }
 
@@ -187,7 +191,7 @@ export function randomGeneral(st, nation, culture) {
 // ---- 参照ヘルパー ----
 export const age = (st, g) => st.year - g.birth;
 export const isActive = (st, g) => g.alive && age(st, g) >= 15;
-export const unitCap = (g) => Math.round(g.lead * 30 / 50) * 50;
+export const unitCap = (g) => Math.round(g.lead * 30 * rankCapMul(g) / 50) * 50;
 export const dateStr = (st) => `${st.year}年 ${SEASONS[st.season]}`;
 
 export function nationProvinces(st, nid) {
@@ -257,6 +261,7 @@ export function deserialize(s) {
     initMarket(st);
     st.version = 2;
   }
+  for (const g of Object.values(st.generals)) ensurePersonnel(g);
   return st;
 }
 

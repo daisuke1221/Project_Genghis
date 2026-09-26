@@ -15,6 +15,7 @@ import { runEvents } from './events.js';
 import { diplomacyTick } from './diplomacy.js';
 import { siegeTick, flushCaptives } from './siege.js';
 import { adminTick } from './admin.js';
+import { personnelTick, personnelYear, hasTrait } from './personnel.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -97,6 +98,7 @@ export function seasonTick(st) {
   healTick(st);
   techTick(st);
   royalTick(st);
+  personnelTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;
 }
 
@@ -149,13 +151,14 @@ function yearlyEvents(st) {
       } else g.nation = null;
     }
     // 忠誠の低い武将の出奔
-    if (g.nation && st.nations[g.nation]?.rulerId !== g.id && g.loyalty < 35 && chance(st, 0.25)) {
+    if (g.nation && st.nations[g.nation]?.rulerId !== g.id && !g.family && !hasTrait(g, 'loyal') && g.loyalty < 35 && chance(st, 0.25)) {
       if (g.nation === player) log(st, `${g.name}が出奔した！`, true);
       const p = st.provinces[g.province];
       g.nation = null; g.unit = null;
       if (p?.governorId === g.id) assignBestGovernor(st, p.id);
     }
   }
+  personnelYear(st, (t, imp) => log(st, t, imp));
   // 在野武将の補充（少しずつ新しい人材が現れる）
   const ronin = Object.values(st.generals).filter((g) => g.alive && !g.nation).length;
   for (let i = ronin; i < 16; i += 1) {

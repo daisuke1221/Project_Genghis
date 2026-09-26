@@ -2,6 +2,10 @@
 import { UNIT_TYPES, PROVINCES } from './data.js';
 import { rnd, rint, chance } from './rng.js';
 import { generalsIn } from './state.js';
+import { roleOf, ensurePersonnel } from './personnel.js';
+
+const ht = (u, t) => !!u.traits?.includes(t);
+const effWar = (u) => u.war + (ht(u, 'hero') ? 10 : 0);
 
 export const COLS = 13;
 export const ROWS = 9;
@@ -73,20 +77,30 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
   genMap(b);
   const nomad = (nid) => ['mongol', 'turkic'].includes(st.nations[nid]?.culture);
   const rulerIds = new Set(Object.values(st.nations).map((n) => n.rulerId));
-  const mk = (g, side) => ({
+  const mk = (g, side) => (ensurePersonnel(g), {
     id: g.id, gid: g.id, side, nation: g.nation, ally: g.nation !== (side === 'att' ? attNation : defNation), name: g.name, type: g.unit.type,
     soldiers: g.unit.soldiers, start: g.unit.soldiers, training: g.unit.training,
     morale: Math.min(100, 70 + Math.round(g.cha / 5) + (side === 'def' ? 5 : 0)),
     war: g.war, lead: g.lead, pol: g.pol, cha: g.cha, nomad: nomad(g.nation), ruler: rulerIds.has(g.id),
     c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
-    tp: 1 + Math.floor(g.pol / 40), hidden: false, confused: 0, commander: false,
+    tp: 1 + Math.floor(g.pol / 40) + (g.traits.includes('cunning') ? 1 : 0) + (roleOf(st, g) === 'strategist' ? 1 : 0), hidden: false, confused: 0, commander: false,
+    traits: [...g.traits], role: roleOf(st, g), duelWins: 0,
     protected: !!(st.options?.protectRuler && g.nation === st.playerNation && rulerIds.has(g.id)), wounded: false,
   });
   const fit = (g) => g?.unit?.soldiers > 0 && !(g.wound && g.wound > st.turn);
   const attGens = [...attIds, ...(reinforce.att || [])].map((id) => st.generals[id]);
   const defGens = defIds ? defIds.map((id) => st.generals[id]) : defNation ? [...generalsIn(st, provinceId, defNation), ...(reinforce.def || []).map((id) => st.generals[id])] : [];
-  const att = attGens.filter(fit).map((g) => mk(g, 'att'));
-  const dfd = defGens.filter(fit).map((g) => mk(g, 'def'));
+  let att = attGens.filter(fit).map((g) => mk(g, 'att'));
+  let dfd = defGens.filter(fit).map((g) => mk(g, 'def'));
+  // 内応：調略に応じた武将は合戦が始まると寝返る
+  const turn = (u, side, nid) => { u.side = side; u.turncoat = true; u.newNation = nid; u.nation = nid; u.ally = false; u.morale = Math.min(100, u.morale + 10); b.notes.push(`${u.name}が寝返った！`); };
+  const flipD = dfd.filter((u) => { const g = st.generals[u.gid]; return g.betray === attNation && g.betrayUntil > st.turn; });
+  const flipA = att.filter((u) => { const g = st.generals[u.gid]; return defNation && g.betray === defNation && g.betrayUntil > st.turn; });
+  for (const u of flipD) turn(u, 'att', attNation);
+  for (const u of flipA) turn(u, 'def', defNation);
+  att = [...att.filter((u) => !flipA.includes(u)), ...flipD];
+  dfd = [...dfd.filter((u) => !flipD.includes(u)), ...flipA];
+  if (flipA.length || flipD.length) for (const u of [...att, ...dfd]) if (!u.turncoat) u.morale -= (u.side === 'att' ? flipA.length : flipD.length) * 8;
   // 冬の遠征：遊牧民以外は凍傷で兵を失う
   if (st.season === 3) {
     let lost = 0;
@@ -119,6 +133,19 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
   }
   // 伏兵：森に布陣した部隊は敵から見えない
   for (const u of b.units) if (tileOf(b, u.c, u.r).t === 'forest') u.hidden = true;
+  // 軍師は伏兵を見破り、大将軍は全軍を奮い立たせる
+  b.strategist = {};
+  for (const side of ['att', 'def']) {
+    const s = b.units.find((u) => u.side === side && u.role === 'strategist');
+    if (s) {
+      b.strategist[side] = true;
+      const hid = b.units.filter((u) => u.side !== side && u.hidden);
+      for (const u of hid) u.hidden = false;
+      if (hid.length) b.notes.push(`軍師${s.name}が伏兵を見破った`);
+    }
+    const m = b.units.find((u) => u.side === side && u.role === 'marshal');
+    if (m) { for (const u of b.units) if (u.side === side) u.morale = Math.min(100, u.morale + 10); b.notes.push(`大将軍${m.name}の下、${side === 'att' ? '攻撃側' : '守備側'}の士気が上がる`); }
+  }
   return b;
 }
 
@@ -305,6 +332,8 @@ export function defenseFactors(b, u) {
   if (isFoot(u) && (tt === 'forest' || tt === 'hill')) { d *= 1.1; f.push(['歩兵は険しい地形に強い', 1 / 1.1]); }
   if (isMounted(u) && tt === 'forest') { d *= 0.85; f.push(['騎馬は森で守りにくい', 1 / 0.85]); }
   if (u.commander) { d *= 1.1; f.push(['総大将の親衛', 1 / 1.1]); }
+  if (ht(u, 'ironwall')) { d *= 1.15; f.push(['鉄壁', 1 / 1.15]); }
+  if (ht(u, 'fortify') && isCastle(tt) && u.side === 'def') { d *= 1.15; f.push(['築城の名手', 1 / 1.15]); }
   return { mul: d, factors: f };
 }
 function defMul(b, u) { return defenseFactors(b, u).mul; }
@@ -318,7 +347,8 @@ export function damageFactors(b, a, t, from = [a.c, a.r], movedDist = a.movedDis
   const add = (label, m) => { if (m !== 1) f.push([label, m]); };
   const castleTarget = isCastle(tt) && t.side === 'def';
   const uphill = tt === 'hill' && at !== 'hill';
-  if (!ranged && isMounted(a) && movedDist >= 2) add(uphill || at === 'forest' ? '突撃（坂・森で勢いが削がれる）' : '騎馬の突撃', uphill || at === 'forest' ? 1.1 : 1.3);
+  if (!ranged && isMounted(a) && movedDist >= 2) add(uphill || at === 'forest' ? '突撃（坂・森で勢いが削がれる）' : ht(a, 'charge') ? '騎馬の突撃（突撃の名手）' : '騎馬の突撃', uphill || at === 'forest' ? 1.1 : ht(a, 'charge') ? 1.45 : 1.3);
+  if (a.type === 'harch' && ht(a, 'horsearch')) add('騎射の名手', 1.15);
   if (ranged) add(b.weather === 'rain' ? '雨で弓が湿る' : '射撃', b.weather === 'rain' ? 0.5 : 0.8);
   if (a.hidden) add('伏兵の奇襲', 1.5);
   if (!ranged && UNIT_TYPES[a.type].range > 1) add('弓兵の白兵戦', 0.6);
@@ -443,12 +473,12 @@ export function duelTargets(b, u) {
   return activeUnits(b, other(u.side)).filter((t) => !t.hidden && hexDist(u.c, u.r, t.c, t.r) === 1);
 }
 export function duelAcceptChance(b, a, t) {
-  if (t.war >= a.war - 10) return 0.9;
-  return Math.max(0.15, Math.min(0.9, 0.9 - (a.war - 10 - t.war) / 40));
+  if (effWar(t) >= effWar(a) - 10) return 0.9;
+  return Math.max(0.15, Math.min(0.9, 0.9 - (effWar(a) - 10 - effWar(t)) / 40));
 }
 export function duelWinChance(a, t) {
   // 3本先取の勝率を近似
-  const p = a.war / (a.war + t.war);
+  const p = effWar(a) / (effWar(a) + effWar(t));
   return p * p * p * (1 + 3 * (1 - p) + 6 * (1 - p) * (1 - p));
 }
 
@@ -466,7 +496,7 @@ export function duel(b, a, t) {
   let ha = 3, ht = 3;
   const rounds = [];
   while (ha > 0 && ht > 0 && rounds.length < 9) {
-    const p = a.war / (a.war + t.war) + (brnd(b) - 0.5) * 0.15;
+    const p = effWar(a) / (effWar(a) + effWar(t)) + (brnd(b) - 0.5) * 0.15;
     if (brnd(b) < p) { ht -= 1; rounds.push('a'); } else { ha -= 1; rounds.push('t'); }
   }
   const winner = ha > 0 ? a : t, loser = winner === a ? t : a;
@@ -474,6 +504,7 @@ export function duel(b, a, t) {
   let outcome = x < 0.35 ? 'killed' : x < 0.7 ? 'wounded' : 'fled';
   if (outcome === 'killed' && loser.protected) outcome = 'wounded';
   winner.morale = Math.min(100, winner.morale + 20);
+  winner.duelWins = (winner.duelWins ?? 0) + 1;
   for (const y of activeUnits(b, winner.side)) if (y !== winner) y.morale = Math.min(100, y.morale + 5);
   for (const y of activeUnits(b, loser.side)) if (y !== loser) y.morale -= 5;
   events.push({ type: 'duel', id: a.id, target: t.id, rounds, winner: winner.id, loser: loser.id, outcome });
@@ -503,6 +534,8 @@ export function tacticChance(b, u, id, t) {
     if (tt === 'forest') p += 0.15;
     if (tt === 'river') p -= 0.3;
   }
+  if (ht(u, 'cunning')) p += 0.1;
+  if (b.strategist?.[u.side]) p += 0.1;
   return Math.max(0.1, Math.min(0.9, p));
 }
 
@@ -687,6 +720,6 @@ export function battleResult(b) {
   return {
     winner: b.winner, reason: b.reason, turns: b.turn,
     provinceId: b.provinceId, fromProvince: b.fromProvince, attNation: b.attNation, defNation: b.defNation, weather: b.weather, notes: b.notes,
-    units: b.units.map((u) => ({ gid: u.gid, side: u.side, soldiers: u.soldiers, start: u.start, routed: u.routed, dead: u.dead, wounded: u.wounded })),
+    units: b.units.map((u) => ({ gid: u.gid, side: u.side, soldiers: u.soldiers, start: u.start, routed: u.routed, dead: u.dead, wounded: u.wounded, commander: u.commander, duelWins: u.duelWins, turncoat: u.turncoat, newNation: u.newNation })),
   };
 }
