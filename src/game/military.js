@@ -9,6 +9,7 @@ import {
 import { cityYields } from './city.js';
 import { transferCityTechs } from './tech.js';
 import { orphanNation } from './royal.js';
+import { adminOnConquest } from './admin.js';
 
 // ---- 徴兵 ----
 export function recruitLimit(st, pid) {
@@ -155,6 +156,7 @@ export function changeOwner(st, pid, nid) {
   }
   p.delegated = nid !== st.playerNation;
   p.city.loyalty = Math.min(p.city.loyalty, 35);
+  adminOnConquest(st, pid);
   p.city.pop = Math.round(p.city.pop * 0.92);
   p.governorId = null;
   if (p.city.wallProgress !== null) p.city.wallProgress = null;

@@ -14,6 +14,7 @@ import { royalTick } from './royal.js';
 import { runEvents } from './events.js';
 import { diplomacyTick } from './diplomacy.js';
 import { siegeTick, flushCaptives } from './siege.js';
+import { adminTick } from './admin.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -61,7 +62,7 @@ export function seasonTick(st) {
     const done = tickConstruction(st, p.id);
     if (p.owner === player) for (const d of done) log(st, `${PROV_DEF[p.id].city}で${d}が完成した。`);
     // 人口
-    if (nat.food > 0 && c.pop < y.popCap) c.pop += Math.round((y.popCap - c.pop) * 0.05 * (0.4 + c.loyalty / 100) + 30);
+    if (nat.food > 0 && c.pop < y.popCap) c.pop += Math.round(((y.popCap - c.pop) * 0.05 * (0.4 + c.loyalty / 100) + 30) * y.admin.grow);
     else if (c.pop > y.popCap) c.pop -= Math.round((c.pop - y.popCap) * 0.1);
     // 民忠
     const target = y.loyaltyTarget - (nat.food < 0 ? 25 : 0);
@@ -111,7 +112,8 @@ function randomEvent(st, p, y) {
     c.horses = Math.round(c.horses * 0.6); c.pop = Math.round(c.pop * 0.97); note('寒雪害（ゾド）で家畜が大量に死んだ。');
   }
   if (chance(st, 0.015)) { c.pop = Math.round(c.pop * 0.9); note('疫病が流行し、人口が減少した。'); }
-  if (c.loyalty < 25 && chance(st, 0.3)) {
+  adminTick(st, p.id, y, note);
+  if (c.loyalty < 25 && chance(st, 0.3 * (c.order < 40 ? 1.5 : c.order > 70 ? 0.5 : 1))) {
     nat.gold = Math.max(0, nat.gold - 150); c.pop = Math.round(c.pop * 0.95); c.loyalty += 12;
     note('民衆が反乱を起こした！鎮圧に金を費やした。');
   }

@@ -14,6 +14,7 @@ import { aiHireTech } from './tech.js';
 import { aiTrade } from './trade.js';
 import { becomeConsort } from './royal.js';
 import { aiSieges } from './siege.js';
+import { aiAdmin } from './admin.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -85,6 +86,8 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   // 兵の少ない武将は徴兵しやすい後方へ、満ちた武将は前線へ
   aiRegroup(st, nid);
   aiReinforce(st, nid);
+  // 手の空いた武将で内政（施し・巡察・治水・商業など）
+  if (nat.alive) aiAdmin(st, nid, nationProvinces(st, nid).map((p) => p.id), { reserve });
 }
 
 function aiRegroup(st, nid) {
@@ -238,5 +241,6 @@ export function delegateDevelop(st, nid) {
     const budget = Math.max(0, (nat.gold - reserve) * 0.4 / Math.max(1, provs.length));
     if (budget > 60) aiDevelopCity(st, p.id, { count: 1, budget });
   }
+  aiAdmin(st, nid, provs.map((p) => p.id), { reserve: Math.max(reserve, nat.gold * 0.5) });
 }
 

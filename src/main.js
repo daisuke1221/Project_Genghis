@@ -9,6 +9,8 @@ import { $, esc, fmt, modal, toast, busy, tooltip, statBar, confirmBox } from '.
 import * as D from './ui/dialogs.js';
 import * as X from './ui/extraDialogs.js';
 import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
+import { adminDialog } from './ui/adminDialog.js';
+import { adminOf, provReligion, nationReligion, RELIGIONS, TAX_LEVELS } from './game/admin.js';
 import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
 import { siegeAt, siegeInfo, assault, sally, liftSiege } from './game/siege.js';
 import { techsIn } from './game/tech.js';
@@ -318,6 +320,9 @@ class App {
         <span>特産</span><span>${def.specialty}（価値${def.specValue}）</span>
         <span>人口</span><span>${fmt(c.pop)} / ${fmt(y.popCap)}</span>
         <span>民忠</span><span>${c.loyalty} ${statBar(c.loyalty)}</span>
+        <span>治安</span><span>${adminOf(c).order} ${statBar(c.order, 100, '#7aa0d8')}</span>
+        <span>信仰</span><span>${RELIGIONS[provReligion(st, pid)].name}${p.owner && provReligion(st, pid) !== nationReligion(st, p.owner) && !RELIGIONS[nationReligion(st, p.owner)].tolerant && !(c.patron > st.turn) ? ' <span class="neg">異教</span>' : ''}</span>
+        ${own ? `<span>税率・開発</span><span>${TAX_LEVELS[c.tax].name}・治水${c.irrigation}・商業${c.commerce}</span>` : ''}
         <span>城壁</span><span>${WALLS[c.walls].name}${c.wallProgress !== null ? `（建設中 ${Math.round(c.wallProgress * 100)}%）` : ''}</span>
         <span>馬</span><span>${fmt(c.horses)}</span>
         ${own ? `<span>季節収入</span><span>金 ${fmt(y.gold)}・食 ${fmt(y.food - y.foodUse)}</span>` : ''}
@@ -331,7 +336,8 @@ class App {
         <button class="btn" data-a="personnel">人事</button>
         <button class="btn" data-a="trade">交易・隊商</button>
         <button class="btn" data-a="tech">技術者</button>
-        <button class="btn ${p.delegated ? 'active' : ''}" data-a="delegate" style="grid-column:span 2">委任：${p.delegated ? 'ON' : 'OFF'}</button>
+        <button class="btn" data-a="admin">内政命令・税率</button>
+        <button class="btn ${p.delegated ? 'active' : ''}" data-a="delegate" title="毎季、建設・税率・内政命令を自動で行います">委任：${p.delegated ? 'ON' : 'OFF'}</button>
       </div>`;
       const techs = techsIn(st, pid);
       const routes = routesFrom(st, pid);
@@ -375,6 +381,7 @@ class App {
       if (a === 'personnel') { await D.personnelDialog(this, pid); this.refresh(); }
       if (a === 'trade') { await X.tradeDialog(this, pid); this.refresh(); }
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
+      if (a === 'admin') { await adminDialog(this, pid); this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
       if (a === 'diplo') { await diplomacyDialog(this, p.owner); this.refresh(); }
       if (a === 'assault') { audio.sfx('horn'); const r = await assault(this.st, pid, this.hooks); if (r.reason) toast(r.reason); else toast(r.fell ? `${def.city}を攻め落とした！` : '総攻撃は失敗した…'); this.checkOver(); this.refresh(); }
@@ -580,7 +587,12 @@ class App {
         <span>徴兵上限/季</span><span>${fmt(y.recruit)}</span>
         <span>訓練/季</span><span>+${y.train}</span>
         <span>建設速度</span><span>×${y.speed.toFixed(2)}</span>
+        <span>治安</span><span>${p.city.order} → 目標${y.admin.orderTarget}</span>
+        <span>税率</span><span>${TAX_LEVELS[p.city.tax].name}</span>
+        <span>治水・商業</span><span>${p.city.irrigation}・${p.city.commerce}</span>
+        <span>信仰</span><span>${RELIGIONS[provReligion(st, pid)].name}</span>
       </div>
+      ${own ? '<button class="btn small primary" data-a="admin" style="margin-top:6px">内政命令・税率</button>' : ''}
       ${inProg.length ? `<div class="sect"><b>建設中</b>${inProg.map((t) => `<div class="gen-row"><span>${BUILDINGS[t.b.type].name}${t.b.level > 1 ? ` Lv${t.b.level}` : ''}</span><span>${Math.round(t.b.progress * 100)}%</span></div>`).join('')}</div>` : ''}`;
     const sel = this.city.selected;
     if (sel) {
@@ -621,6 +633,7 @@ class App {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'tech') { X.techDialog(this, pid).then(() => { this.city.rebuild(); this.renderCityPanels(); this.renderTopbar(); }); return; }
       if (a === 'trade') { X.tradeDialog(this, pid).then(() => { this.renderCityPanels(); this.renderTopbar(); }); return; }
+      if (a === 'admin') { adminDialog(this, pid).then(() => { this.city.rebuild(); this.renderCityPanels(); this.renderTopbar(); }); return; }
       if (!a || !sel) return;
       const t = tileAt(p.city, ...sel);
       if (a === 'upgrade') this.tryBuild(sel, t.b.type);
