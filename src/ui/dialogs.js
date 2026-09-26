@@ -208,7 +208,8 @@ export function nationsDialog(app) {
       const render = () => {
         let html = `<div class="tabs"><button class="btn small ${tab === 'mine' ? 'active' : ''}" data-tab="mine">自勢力の地方</button>
           <button class="btn small ${tab === 'gens' ? 'active' : ''}" data-tab="gens">配下の武将</button>
-          <button class="btn small ${tab === 'all' ? 'active' : ''}" data-tab="all">全勢力</button></div>`;
+          <button class="btn small ${tab === 'all' ? 'active' : ''}" data-tab="all">全勢力</button>
+          <button class="btn small ${tab === 'chron' ? 'active' : ''}" data-tab="chron">年表</button></div>`;
         if (tab === 'mine') {
           html += `<table class="list"><tr><th>都市</th><th>人口</th><th>民忠</th><th>金/季</th><th>食/季</th><th>城壁</th><th>兵</th><th>委任</th></tr>
             ${nationProvinces(st, nid).map((p) => {
@@ -219,6 +220,9 @@ export function nationsDialog(app) {
         } else if (tab === 'gens') {
           html += `<table class="list"><tr><th>武将</th><th>所在</th><th>年齢</th><th>武</th><th>統</th><th>政</th><th>魅</th><th>忠</th><th>兵</th></tr>
             ${nationGenerals(st, nid).map((g) => `<tr class="clickable" data-p="${g.province}"><td>${esc(g.name)}</td><td>${PROV_DEF[g.province]?.city ?? ''}</td><td>${age(st, g)}</td><td>${g.war}</td><td>${g.lead}</td><td>${g.pol}</td><td>${g.cha}</td><td>${g.loyalty}</td><td>${g.unit?.soldiers > 0 ? `${UNIT_TYPES[g.unit.type].short}${fmt(g.unit.soldiers)}` : '―'}</td></tr>`).join('')}</table>`;
+        } else if (tab === 'chron') {
+          const ch = st.chronicle || [];
+          html += ch.length ? `<table class="list"><tr><th>年</th><th>出来事</th><th>内容</th></tr>${ch.map((c) => `<tr><td style="white-space:nowrap">${esc(c.date)}</td><td style="white-space:nowrap"><b>${esc(c.title)}</b></td><td>${esc(c.text)}</td></tr>`).join('')}</table>` : '<p class="muted">まだ史実イベントは起きていません。</p>';
         } else {
           const list = Object.values(st.nations).filter((n) => n.alive).sort((a, b) => nationProvinces(st, b.id).length - nationProvinces(st, a.id).length);
           html += `<p>勝利条件：全${PROVINCES.length}地方のうち${Math.ceil(PROVINCES.length * VICTORY_SHARE)}地方を支配する。</p>
@@ -274,6 +278,7 @@ export function settingsDialog(app) {
         <span>音楽</span><input type="range" min="0" max="1" step="0.05" value="${audio.musicVol}" data-k="m">
         <span>効果音</span><input type="range" min="0" max="1" step="0.05" value="${audio.sfxVol}" data-k="s">
         ${app.st ? `<span>合戦</span><label><input type="checkbox" data-k="auto" ${auto ? 'checked' : ''}> 常に自動で戦う（確認しない）</label>` : ''}
+        ${app.st ? `<span>史実イベント</span><label><input type="checkbox" data-k="hist" ${app.st.options.historyEvents !== false ? 'checked' : ''}> 起こる（奥州合戦・十字軍・オトラル事件など）</label>` : ''}
       </div>`;
       el.oninput = (e) => {
         const k = e.target.dataset.k;
@@ -283,6 +288,7 @@ export function settingsDialog(app) {
           audio.setVolumes(m, s);
         }
         if (k === 'auto') app.st.options.autoBattle = e.target.checked;
+        if (k === 'hist') app.st.options.historyEvents = e.target.checked;
       };
     },
   });
@@ -295,6 +301,8 @@ export function helpDialog() {
     width: '720px',
     body: `<div class="help">
       <p>12世紀末のユーラシア。35の勢力が割拠する中から一つを選び、内政と合戦で領土を広げ、全${PROVINCES.length}地方の${Math.round(VICTORY_SHARE * 100)}%（${Math.ceil(PROVINCES.length * VICTORY_SHARE)}地方）を支配すれば勝利です。1ターンは1季節（春夏秋冬）。</p>
+      <h3>史実イベント</h3>
+      <ul><li>条件がそろうと、奥州合戦・第3回十字軍・クリルタイ・オトラル事件などの史実の出来事が起こります。自勢力が当事者なら選択肢から対応を選べ、他勢力は史実どおりに動きます。起きた出来事は「勢力」→「年表」で振り返れます。設定でオフにもできます。</li></ul>
       <h3>シナリオ</h3>
       <ul><li>1189年「蒼き狼の目覚め」、1206年「大モンゴル国の成立」、1219年「西方大遠征」の3本。開始年によって勢力の版図・君主・登場人物が変わり、すでに世を去った人物は登場しません。</li></ul>
       <h3>地図</h3>
@@ -377,4 +385,30 @@ export function battleSummaryHtml(st, b, side) {
   const reason = { annihilated: '一方の軍が壊滅した', keep: '本丸が占拠された', timeout: '攻撃側が攻めきれず撤退した', retreat: '退却した' }[b.reason] ?? '';
   return `<p>${reason}。</p><table class="list"><tr><th></th><th>武将</th><th>兵数</th><th></th></tr>
     ${b.units.map((u) => `<tr><td>${u.side === side ? '自' : '敵'}</td><td>${esc(u.name)}</td><td>${fmt(u.start)} → ${fmt(u.soldiers)}</td><td>${u.dead ? '<span class="neg">討死</span>' : u.routed ? '敗走' : ''}</td></tr>`).join('')}</table>`;
+}
+
+// ---------- 歴史イベント ----------
+export async function eventDialog(app, { ev, title, text, choices, date, involved, result }) {
+  busy(null);
+  app.renderTopbar?.();
+  audio.sfx('horn');
+  const body = `<div class="event-scroll"><div class="event-glyph">${esc(ev?.glyph ?? '史')}</div>
+    <div class="event-main"><div class="event-date">${esc(date)}</div><div class="event-text">${esc(text)}</div>
+    ${!involved && result ? `<div class="event-result">${esc(result)}</div>` : ''}
+    ${involved && choices?.length > 1 ? `<div class="muted" style="margin-top:8px">どうする？</div>` : ''}</div></div>`;
+  let buttons;
+  if (involved && choices?.length) {
+    buttons = choices.map((c, i) => ({ label: c.label, value: i, primary: i === 0 }));
+  } else buttons = [{ label: '閉じる', value: 0, primary: true }];
+  const idx = await modal({
+    title: `史実イベント：${esc(title)}`,
+    width: '640px',
+    body: (el) => {
+      el.innerHTML = body + (involved && choices?.length > 1 ? `<table class="list" style="margin-top:8px">${choices.map((c) => `<tr><td><b>${esc(c.label)}</b></td><td class="muted">${esc(c.hint ?? '')}</td></tr>`).join('')}</table>` : '');
+    },
+    buttons,
+    closeValue: 0,
+  });
+  if (app.turnBusy) busy('他勢力の行動中…');
+  return idx;
 }

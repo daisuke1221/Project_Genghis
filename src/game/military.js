@@ -138,8 +138,15 @@ function escapeTarget(st, g, from) {
 
 export function changeOwner(st, pid, nid) {
   const p = st.provinces[pid];
+  const prev = p.owner;
   p.owner = nid;
   transferCityTechs(st, pid, nid);
+  // 首都を失った勢力は、残った領地の中で最も人口の多い都市へ遷都する
+  const pn = prev ? st.nations[prev] : null;
+  if (pn && pn.capital === pid) {
+    const rest = Object.values(st.provinces).filter((q) => q.owner === prev).sort((x, y) => y.city.pop - x.city.pop);
+    if (rest.length) pn.capital = rest[0].id;
+  }
   p.delegated = nid !== st.playerNation;
   p.city.loyalty = Math.min(p.city.loyalty, 35);
   p.city.pop = Math.round(p.city.pop * 0.92);
