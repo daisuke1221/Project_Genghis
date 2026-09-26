@@ -49,7 +49,7 @@ export function recruitDialog(app, pid) {
                 <button class="btn small" data-r="${g.id}" data-n="500" ${q.ok ? '' : 'disabled'}>+500</button>
                 <button class="btn small" data-r="${g.id}" data-n="max" ${q.ok ? '' : 'disabled'} title="${q.ok ? `${fmt(q.amount)}人・${fmt(q.cost)}金` : esc(q.reason)}">最大</button>
                 ${has ? `<button class="btn small" data-d="${g.id}">解散</button>` : ''}
-                ${q.ok ? '' : `<span class="muted" style="font-size:11px">${esc(q.reason)}</span>`}
+                ${q.ok ? '' : `<span class="muted" style="font-size:calc(11px * var(--fs))">${esc(q.reason)}</span>`}
               </td></tr>`;
           }).join('')}</table>
           <div class="muted" style="margin-top:8px">兵種の費用（1人あたり）：${unitTypesFor(st, nid).map((t) => `${UNIT_TYPES[t].name} ${UNIT_TYPES[t].cost}金${UNIT_TYPES[t].horses ? `＋馬${UNIT_TYPES[t].horses}` : ''}`).join('／')}。攻城兵には工房が必要。兵は毎季、兵数×0.1の食糧と×0.04の金を消費します。</div>
@@ -260,13 +260,21 @@ export function settingsDialog(app) {
     title: '設定',
     body: (el) => {
       const auto = app.st?.options?.autoBattle ?? false;
+      const fs = Number(getComputedStyle(document.documentElement).getPropertyValue('--fs')) || 1.2;
       el.innerHTML = `<div class="grid2" style="align-items:center;gap:10px 14px">
+        <span>文字の大きさ</span><span class="row">${app.fontScales.map(([n, v]) => `<button class="btn small ${v === fs ? 'active' : ''}" data-fs="${v}">${n}</button>`).join('')}</span>
         <span>音楽</span><input type="range" min="0" max="1" step="0.05" value="${audio.musicVol}" data-k="m">
         <span>効果音</span><input type="range" min="0" max="1" step="0.05" value="${audio.sfxVol}" data-k="s">
         ${app.st ? `<span>合戦</span><label><input type="checkbox" data-k="auto" ${auto ? 'checked' : ''}> 常に自動で戦う（確認しない）</label>` : ''}
         ${app.st ? `<span>君主の保護</span><label><input type="checkbox" data-k="protect" ${app.st.options.protectRuler ? 'checked' : ''}> 自分の君主は合戦で討死しない（負傷にとどまる）</label>` : ''}
         ${app.st ? `<span>史実イベント</span><label><input type="checkbox" data-k="hist" ${app.st.options.historyEvents !== false ? 'checked' : ''}> 起こる（奥州合戦・十字軍・オトラル事件など）</label>` : ''}
       </div>`;
+      el.onclick = (e) => {
+        const v = e.target.closest('[data-fs]')?.dataset.fs;
+        if (!v) return;
+        app.setFontScale(Number(v));
+        el.querySelectorAll('[data-fs]').forEach((b) => b.classList.toggle('active', b.dataset.fs === v));
+      };
       el.oninput = (e) => {
         const k = e.target.dataset.k;
         if (k === 'm' || k === 's') {

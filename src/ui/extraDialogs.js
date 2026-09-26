@@ -238,7 +238,7 @@ export function techDialog(app, pid) {
       let filter = 'all';
       const row = (t, action) => `<tr><td><span class="ic-s">${TECH_TYPES[t.type].glyph}</span>${esc(t.name)}${t.trait ? ` <span class="trait" title="${esc(TECH_TRAITS[t.trait].desc)}">${TECH_TRAITS[t.trait].name}</span>` : ''}</td><td>${TECH_TYPES[t.type].name}</td>
         <td title="経験 ${Math.round(t.exp ?? 0)}/${100 * t.level}">${'★'.repeat(t.level)}${t.level < TECH_MAX_LEVEL ? `<span class="muted">${'☆'.repeat(TECH_MAX_LEVEL - t.level)}</span>` : ''}</td>
-        <td>${CULTURES[t.culture]?.name ?? ''}</td><td class="muted" style="font-size:12px">${TECH_TYPES[t.type].desc}${t.city && t.nation === nid ? `<br><span class="pos">実効 ×${techMul(st, t, t.city).toFixed(2)}</span>` : ''}</td><td>${action}</td></tr>`;
+        <td>${CULTURES[t.culture]?.name ?? ''}</td><td class="muted" style="font-size:calc(12px * var(--fs))">${TECH_TYPES[t.type].desc}${t.city && t.nation === nid ? `<br><span class="pos">実効 ×${techMul(st, t, t.city).toFixed(2)}</span>` : ''}</td><td>${action}</td></tr>`;
       const render = () => {
         const here = techsIn(st, pid);
         const mine = Object.values(st.techs).filter((t) => t.nation === nid && t.city !== pid);

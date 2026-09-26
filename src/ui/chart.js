@@ -1,7 +1,7 @@
 // 折れ線グラフ（SVG）：国ごとの推移。色は各国の地図の色（国を識別する色）をそのまま使う
 import { esc, fmt } from './ui.js';
 
-const W = 720, H = 300, PAD = { l: 56, r: 110, t: 12, b: 28 };
+const W = 720, H = 300, PAD = { l: 60, r: 130, t: 12, b: 30 };
 
 function niceMax(v) {
   if (v <= 0) return 1;

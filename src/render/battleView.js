@@ -190,10 +190,10 @@ export class BattleView {
   showOverlay() {
     this.overlay.className = 'overlay-layer';
     this.overlay.innerHTML = `
-      <div class="panel" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:6px 16px;display:flex;gap:16px;align-items:center;font-size:14px">
+      <div class="panel" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);max-width:96vw;padding:6px 16px;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;align-items:center;white-space:nowrap;font-size:calc(14px * var(--fs))">
         <b id="bt-title"></b><span id="bt-turn"></span><span id="bt-phase"></span><span id="bt-weather" class="weather-tag"></span>
       </div>
-      <div class="panel" id="bt-info" style="position:absolute;left:10px;top:10px;width:240px;padding:10px;font-size:13px"></div>
+      <div class="panel" id="bt-info" style="position:absolute;left:10px;top:calc(48px * var(--fs) + 12px);width:min(calc(240px * var(--fs)), 34vw);max-height:calc(100% - 48px * var(--fs) - 90px);overflow-y:auto;padding:10px;font-size:calc(13px * var(--fs))"></div>
       <div class="panel" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);padding:8px 12px;display:flex;gap:8px">
         <span id="bt-tac" class="tactic-bar"></span>
         <button class="btn" id="bt-wait">待機</button>
@@ -201,7 +201,7 @@ export class BattleView {
         <button class="btn" id="bt-auto">自動</button>
         <button class="btn" id="bt-retreat">退却</button>
       </div>
-      <div class="panel" style="position:absolute;right:10px;top:10px;width:220px;padding:8px 10px;font-size:12px;line-height:1.6">
+      <div class="panel" style="position:absolute;right:10px;top:calc(48px * var(--fs) + 12px);width:min(calc(220px * var(--fs)), 32vw);max-height:calc(100% - 48px * var(--fs) - 90px);overflow-y:auto;padding:8px 10px;font-size:calc(12px * var(--fs));line-height:1.6">
         <b>操作</b><br>左クリック：部隊選択 → 青いマスへ移動 → 赤い敵を攻撃<br>右クリック：選択解除<br>ドラッグ：視点回転<br>
         <span class="muted">騎兵は2マス以上動いてから攻撃すると突撃ボーナス。敵を囲むと挟撃ボーナス。本丸を占拠すれば攻撃側の勝利。<br>★総大将が敗走すると全軍が動揺する。計略は政治力で成否が決まる（軍師がいれば見立てを聞ける）。森の部隊は伏兵（敵から見えない）。</span>
       </div>`;
@@ -290,7 +290,7 @@ export class BattleView {
         const fmtF = ([label, m]) => `<div class="${m >= 1 ? 'pos' : 'neg'}">${label} ×${m.toFixed(2)}</div>`;
         const af = damageFactors(this.b, this.selected, u).factors;
         const df = defenseFactors(this.b, u).factors;
-        html += `<div class="sect"><b>予想損害：約${est.toLocaleString()}</b><div class="muted" style="font-size:12px">${[...af, ...df].map(fmtF).join('') || '補正なし'}</div></div>`;
+        html += `<div class="sect"><b>予想損害：約${est.toLocaleString()}</b><div class="muted" style="font-size:calc(12px * var(--fs))">${[...af, ...df].map(fmtF).join('') || '補正なし'}</div></div>`;
       }
     } else if (this.hoverHex) {
       const t = tileOf(this.b, ...this.hoverHex).t;
@@ -303,7 +303,7 @@ export class BattleView {
         castle: '守備側は城壁の分だけ守りが堅い。攻撃側は入りにくい',
         keep: '攻撃側が占拠すれば勝利',
       }[t];
-      html += `<div class="sect">${T.name}：防御×${(t === 'castle' || t === 'keep') ? `${(1.1 + 0.3 * this.b.walls).toFixed(1)}（守備側）` : T.def}　移動${T.cost}${t === 'forest' ? '（騎馬3）' : ''}<div class="muted" style="font-size:12px">${notes}</div></div>`;
+      html += `<div class="sect">${T.name}：防御×${(t === 'castle' || t === 'keep') ? `${(1.1 + 0.3 * this.b.walls).toFixed(1)}（守備側）` : T.def}　移動${T.cost}${t === 'forest' ? '（騎馬3）' : ''}<div class="muted" style="font-size:calc(12px * var(--fs))">${notes}</div></div>`;
     }
     box.innerHTML = html;
   }

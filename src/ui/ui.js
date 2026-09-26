@@ -12,7 +12,8 @@ export function modal({ title, body, buttons = [{ label: '閉じる', value: nul
     back.className = 'modal-back';
     const box = document.createElement('div');
     box.className = 'modal';
-    if (width) box.style.width = width;
+    // 幅は文字の大きさの倍率に合わせて広げ、画面からはみ出さないようにする
+    if (width) box.style.width = /^\d+px$/.test(width) ? `min(calc(${width} * var(--fs)), 96vw)` : width;
     box.innerHTML = `<h2>${title}</h2><div class="body"></div><div class="foot"></div>`;
     back.appendChild(box);
     const bodyEl = box.querySelector('.body');
