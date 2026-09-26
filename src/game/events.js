@@ -7,7 +7,7 @@ import {
   dateStr, treaty,
 } from './state.js';
 import { killGeneral, changeOwner, adjustRelation, checkNationAlive } from './military.js';
-import { breakTreaty, sign, areNeighbors, nationPower } from './diplomacy.js';
+import { declareWar, sign, areNeighbors, nationPower } from './diplomacy.js';
 
 // ---------- ヘルパー ----------
 export const gen = (st, ...names) => Object.values(st.generals).find((g) => g.alive && names.includes(g.name)) || null;
@@ -36,7 +36,7 @@ function loyaltyAll(st, nid, d) {
   for (const g of nationGenerals(st, nid)) if (!isRuler(st, g)) g.loyalty = Math.max(0, Math.min(100, g.loyalty + d));
 }
 function war(st, a, b) {
-  if (treaty(st, a, b)) breakTreaty(st, a, b);
+  declareWar(st, a, b);
   adjustRelation(st, a, b, -200);
 }
 

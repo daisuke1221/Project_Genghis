@@ -8,6 +8,8 @@ import { audio } from './audio/audio.js';
 import { $, esc, fmt, modal, toast, busy, tooltip, statBar, confirmBox } from './ui/ui.js';
 import * as D from './ui/dialogs.js';
 import * as X from './ui/extraDialogs.js';
+import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
+import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
 import { techsIn } from './game/tech.js';
 import { routesFrom } from './game/trade.js';
 import { TECH_TYPES } from './game/data.js';
@@ -51,6 +53,7 @@ class App {
       proposal: (pr) => D.proposalDialog(this, pr),
       progress: (name) => busy(`${name}の行動中…`),
       event: (payload) => D.eventDialog(this, payload),
+      callToArms: (call) => callToArmsDialog(this, call),
     };
     document.addEventListener('keydown', (e) => this.onKey(e));
     this.showTitle();
@@ -271,7 +274,7 @@ class App {
       audio.sfx('click');
       if (a === 'end') this.endTurn();
       if (a === 'back') this.leaveCity();
-      if (a === 'diplo') { await D.diplomacyDialog(this); this.refresh(); }
+      if (a === 'diplo') { await diplomacyDialog(this); this.refresh(); }
       if (a === 'harem') { await X.haremDialog(this); this.refresh(); }
       if (a === 'nations') { const pid = await D.nationsDialog(this); if (pid) { if (this.mode === 'city') this.leaveCity(); this.select(pid); this.world.focus(pid); } }
       if (a === 'save') { const r = await D.saveLoadDialog(this, 'both'); if (r?.load) this.loadSlot(r.load); }
@@ -307,7 +310,7 @@ class App {
     const rel = p.owner && !own ? st.nations[st.playerNation].relations[p.owner] : null;
     let html = `<h2>${def.city} <span class="muted">${def.region}</span></h2>
       <div class="owner">${nat ? `<span class="swatch" style="background:${nat.color}"></span>${nat.name}${nat.capital === pid ? '（首都）' : ''}` : '<span class="muted">空白地（どの勢力にも属さない）</span>'}
-      ${tr ? `<span class="pos">［${tr === 'alliance' ? '同盟' : '停戦'}］</span>` : ''}${rel !== null ? ` <span class="muted">友好 ${rel}</span>` : ''}</div>
+      ${p.owner && !own && (tr || atWar(st, st.playerNation, p.owner)) ? `<span class="${tr ? 'pos' : 'neg'}">［${treatyLabel(st, st.playerNation, p.owner)}］</span>` : ''}${rel !== null ? ` <span class="muted">友好 ${rel}</span>` : ''}</div>
       <div class="grid2">
         <span>地勢</span><span>${PROVINCE_TERRAIN[def.terrain].name}</span>
         <span>特産</span><span>${def.specialty}（価値${def.specValue}）</span>
@@ -357,7 +360,7 @@ class App {
       if (a === 'trade') { await X.tradeDialog(this, pid); this.refresh(); }
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
-      if (a === 'diplo') { await D.diplomacyDialog(this, p.owner); this.refresh(); }
+      if (a === 'diplo') { await diplomacyDialog(this, p.owner); this.refresh(); }
     };
   }
 
@@ -408,9 +411,11 @@ class App {
     if (owner !== nid) {
       const tr = owner ? treaty(st, nid, owner) : null;
       const name = owner ? st.nations[owner].name : '空白地';
-      const msg = tr
-        ? `${name}とは${tr === 'alliance' ? '同盟' : '停戦'}中です。条約を破棄して${PROV_DEF[pid].city}に攻め込みますか？<br><span class="neg">（他勢力からの信用も失います）</span>`
-        : `${name}の${PROV_DEF[pid].city}に攻め込みますか？`;
+      const allies = owner ? friendsOf(st, owner).filter((f) => f !== nid).map((f) => st.nations[f].name) : [];
+      let msg = tr
+        ? `${name}とは${tr === 'alliance' ? '同盟' : tr === 'vassal' ? '従属関係' : '停戦'}中です。条約を破棄して${PROV_DEF[pid].city}に攻め込みますか？<br><span class="neg">（他勢力からの信用も失います）</span>`
+        : owner && !atWar(st, nid, owner) ? `${name}に宣戦布告し、${PROV_DEF[pid].city}に攻め込みますか？` : `${name}の${PROV_DEF[pid].city}に攻め込みますか？`;
+      if (owner && !atWar(st, nid, owner) && allies.length) msg += `<br><span class="muted">${name}の味方（${allies.join('、')}）も参戦するかもしれません。</span>`;
       if (!(await confirmBox('出陣', msg, '攻め込む', 'やめる'))) return;
       audio.sfx('horn');
     }

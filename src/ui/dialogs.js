@@ -145,58 +145,6 @@ export function personnelDialog(app, pid) {
   });
 }
 
-// ---------- 外交 ----------
-export function diplomacyDialog(app, focus) {
-  const st = app.st, nid = st.playerNation;
-  return modal({
-    title: '外交',
-    width: '820px',
-    body: (el) => {
-      const render = () => {
-        const me = st.nations[nid];
-        const list = Object.values(st.nations).filter((n) => n.alive && n.id !== nid)
-          .sort((a, b) => (b.id === focus) - (a.id === focus) || relation(st, nid, b.id) - relation(st, nid, a.id));
-        const myPow = nationPower(st, nid);
-        el.innerHTML = `<p class="muted">金 ${fmt(me.gold)}。贈物で友好度を上げ、同盟（無期限の不可侵）や停戦（${12}季）を申し込めます。条約を破って攻め込むと他国の信用を失います。</p>
-          <table class="list"><tr><th>勢力</th><th>君主</th><th>領地</th><th>兵力</th><th>友好</th><th>条約</th><th></th></tr>
-          ${list.map((n) => {
-            const tr = treaty(st, nid, n.id);
-            const rel = relation(st, nid, n.id);
-            const pow = nationPower(st, n.id);
-            return `<tr class="${n.id === focus ? 'sel' : ''}"><td><span class="swatch" style="background:${n.color}"></span>${n.name}</td>
-              <td>${esc(ruler(st, n.id)?.name ?? '')}</td><td>${nationProvinces(st, n.id).length}</td>
-              <td>${fmt(nationSoldiers(st, n.id))} <span class="muted">(${pow > myPow * 1.3 ? '強' : pow < myPow * 0.7 ? '弱' : '互角'})</span></td>
-              <td style="width:90px"><span class="${rel >= 0 ? 'pos' : 'neg'}">${rel}</span>${statBar(rel + 100, 200, rel >= 0 ? '#7fbf5a' : '#d35a4a')}</td>
-              <td>${tr === 'alliance' ? '同盟' : tr === 'truce' ? `停戦(〜${st.nations[nid].treaties[n.id].until - st.turn}季)` : '―'}</td>
-              <td class="row">
-                <button class="btn small" data-a="gift" data-n="${n.id}" ${me.gold >= 300 ? '' : 'disabled'}>贈物300</button>
-                ${tr ? `<button class="btn small" data-a="break" data-n="${n.id}">破棄</button>` : `
-                <button class="btn small" data-a="alliance" data-n="${n.id}" title="成功率 約${Math.round(acceptChance(st, n.id, nid, 'alliance') * 100)}%">同盟</button>
-                <button class="btn small" data-a="truce" data-n="${n.id}" title="成功率 約${Math.round(acceptChance(st, n.id, nid, 'truce') * 100)}%">停戦</button>`}
-              </td></tr>`;
-          }).join('')}</table>`;
-      };
-      el.onclick = (e) => {
-        const b = e.target.closest('[data-a]');
-        if (!b) return;
-        const other = b.dataset.n, a = b.dataset.a;
-        const name = st.nations[other].name;
-        if (a === 'gift') { const r = gift(st, nid, other, 300); if (r.ok) { toast(`${name}との友好度が${r.gain}上がった`); audio.sfx('coin'); } }
-        if (a === 'alliance' || a === 'truce') {
-          if (st.nations[nid].proposedTo?.[other] === st.turn) { toast('今季はすでに使者を送っています'); return; }
-          st.nations[nid].proposedTo = { ...(st.nations[nid].proposedTo || {}), [other]: st.turn };
-          const r = propose(st, nid, other, a);
-          toast(r.ok ? `${name}は${a === 'alliance' ? '同盟' : '停戦'}を受け入れた！` : `${name}に断られた…`);
-        }
-        if (a === 'break') breakTreaty(st, nid, other);
-        render();
-        app.renderTopbar();
-      };
-      render();
-    },
-  });
-}
-
 // ---------- 勢力一覧 ----------
 export function nationsDialog(app) {
   const st = app.st, nid = st.playerNation;
@@ -303,6 +251,11 @@ export function helpDialog() {
       <p>12世紀末のユーラシア。35の勢力が割拠する中から一つを選び、内政と合戦で領土を広げ、全${PROVINCES.length}地方の${Math.round(VICTORY_SHARE * 100)}%（${Math.ceil(PROVINCES.length * VICTORY_SHARE)}地方）を支配すれば勝利です。1ターンは1季節（春夏秋冬）。</p>
       <h3>史実イベント</h3>
       <ul><li>条件がそろうと、奥州合戦・第3回十字軍・クリルタイ・オトラル事件などの史実の出来事が起こります。自勢力が当事者なら選択肢から対応を選べ、他勢力は史実どおりに動きます。起きた出来事は「勢力」→「年表」で振り返れます。設定でオフにもできます。</li></ul>
+      <h3>外交</h3>
+      <ul><li>他国を攻めると宣戦布告になり、相手の同盟国・従属国が参戦してきます。同盟国の武将は、隣接する地方の合戦に援軍として加わります（地図上では「援」の印）。</li>
+      <li>戦争中は和平交渉ができます（白紙講和・賠償金・地方の割譲・従属）。戦況が有利なほど厳しい条件が通ります。</li>
+      <li>強国には臣従を申し出て守ってもらい、弱い隣国には従属を要求できます。従属国は毎季収入の20%を朝貢し、長く従えば併合できます。</li>
+      <li>一国が強くなりすぎると、周辺国が包囲網を結んで対抗します。友好度は時間とともに少しずつ変化します。</li></ul>
       <h3>シナリオ</h3>
       <ul><li>1189年「蒼き狼の目覚め」、1206年「大モンゴル国の成立」、1219年「西方大遠征」の3本。開始年によって勢力の版図・君主・登場人物が変わり、すでに世を去った人物は登場しません。</li></ul>
       <h3>地図</h3>
@@ -368,13 +321,31 @@ export async function proposalDialog(app, pr) {
   const n = st.nations[pr.from];
   const kind = pr.kind === 'alliance' ? '同盟' : `停戦（12季）`;
   const princess = pr.kind === 'marriage' ? st.princesses[pr.princess] : null;
-  const text = princess
-    ? `<div class="row" style="align-items:flex-start;gap:12px">${portrait(princess, n.culture, n.color)}<div><p>「我が主君の姫、${esc(princess.name)}（${st.year - princess.birth}歳）を、貴殿の妃として迎えられたし」</p><p class="muted">受け入れると婚姻同盟が結ばれます。</p></div></div>`
-    : `<p>「我が国と${kind}を結ばれたし」</p>`;
+  let text, title = '使者の来訪', buttons = [{ label: '断る', value: false }, { label: '受け入れる', value: true, primary: true }];
+  const t = pr.terms;
+  if (princess) {
+    title = '縁談の使者';
+    text = `<div class="row" style="align-items:flex-start;gap:12px">${portrait(princess, n.culture, n.color)}<div><p>「我が主君の姫、${esc(princess.name)}（${st.year - princess.birth}歳）を、貴殿の妃として迎えられたし」</p><p class="muted">受け入れると婚姻同盟が結ばれます。</p></div></div>`;
+  } else if (pr.kind === 'peace') {
+    title = '和平の使者';
+    const cond = t.kind === 'payGold' ? `我が国は賠償金として${t.gold}金を差し出す` : t.kind === 'demandGold' ? `貴国は賠償金として${t.gold}金を支払うこと` : '互いに何も求めない';
+    text = `<p>「長き戦いに民は疲れ果てた。和睦を結ばれたし。条件は、${cond}」</p><p class="muted">受け入れると戦争が終わり、${12}季の停戦となります。</p>`;
+    if (t.kind === 'demandGold' && st.nations[st.playerNation].gold < t.gold) text += '<p class="neg">（金が足りない分は支払えるだけ支払います）</p>';
+  } else if (pr.kind === 'submit') {
+    title = '降伏の使者';
+    text = '<p>「我が国は貴国に臣従し、毎年の朝貢を約束いたす。どうか矛を収められよ」</p><p class="muted">受け入れると相手は従属国となり、毎季収入の20%を朝貢します。</p>';
+  } else if (pr.kind === 'demand') {
+    title = '臣従の要求';
+    text = '<p>「我が主君に臣従し、朝貢せよ。さもなくば、我が軍勢が貴国を踏みつぶすであろう」</p><p class="muted">受け入れると従属国となり、毎季収入の20%を朝貢します。拒めば戦争になります。</p>';
+    buttons = [{ label: '拒絶する（開戦）', value: false }, { label: '臣従する', value: true, primary: true }];
+  } else if (pr.coalition) {
+    title = '包囲網への誘い';
+    text = `<p>「強大化する${esc(st.nations[pr.coalition]?.name ?? '')}に対抗するため、我らと同盟を結ばれたし」</p>`;
+  } else text = `<p>「我が国と${kind}を結ばれたし」</p>`;
   const ok = await modal({
-    title: princess ? '縁談の使者' : '使者の来訪',
+    title,
     body: `<p><span class="swatch" style="background:${n.color}"></span><b>${n.name}</b>の${esc(ruler(st, pr.from)?.name ?? '')}から使者が来た。</p>${text}`,
-    buttons: [{ label: '断る', value: false }, { label: '受け入れる', value: true, primary: true }],
+    buttons,
     closeValue: false,
   });
   busy('他勢力の行動中…');
