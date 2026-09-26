@@ -8,8 +8,8 @@ import {
 } from './state.js';
 import { aiDevelopCity, cityYields, startWalls } from './city.js';
 import { recruit, recruitQuote, tryHire, adjustRelation, searchTalent, recruitLimit } from './military.js';
-import { aiDiplomacy, sign } from './diplomacy.js';
-import { executeMove } from './actions.js';
+import { executeMove, handleCalls } from './actions.js';
+import { aiDiplomacy, sign, atWar, applyPeace, declareWar } from './diplomacy.js';
 import { aiHireTech } from './tech.js';
 import { aiTrade } from './trade.js';
 import { becomeConsort } from './royal.js';
@@ -28,6 +28,16 @@ export async function aiNationTurn(st, nid, hooks = {}) {
         sign(st, pr.from, st.playerNation, 'alliance');
         adjustRelation(st, pr.from, st.playerNation, 30);
       }
+    } else if (pr.kind === 'peace') {
+      if (ok && atWar(st, pr.from, st.playerNation)) applyPeace(st, pr.from, st.playerNation, pr.terms);
+      else adjustRelation(st, pr.from, st.playerNation, -3);
+    } else if (pr.kind === 'submit') {
+      if (ok && atWar(st, pr.from, st.playerNation)) applyPeace(st, st.playerNation, pr.from, { kind: 'vassal' });
+      else if (ok) sign(st, st.playerNation, pr.from, 'vassal', { lord: st.playerNation });
+      else adjustRelation(st, pr.from, st.playerNation, -5);
+    } else if (pr.kind === 'demand') {
+      if (ok) sign(st, pr.from, st.playerNation, 'vassal', { lord: pr.from });
+      else await handleCalls(st, declareWar(st, pr.from, st.playerNation, { reason: '（臣従の要求を拒まれて）' }), hooks);
     } else if (ok) sign(st, pr.from, st.playerNation, pr.kind);
     else adjustRelation(st, pr.from, st.playerNation, -5);
   }
@@ -163,6 +173,8 @@ async function aiAttack(st, nid, hooks) {
     if (!pool.length || myPow < need) continue;
     let score = (st.provinces[to].city.pop / 1000 + 5) * (myPow / (dv + 200));
     if (!owner) score *= 1.5;
+    else if (atWar(st, nid, owner)) score *= 1.8;
+    else score *= 0.7; // 新たな戦争は慎重に
     score *= 0.6 + nat.aggro * 0.8 - Math.max(0, rel) / 150;
     plans.push({ to, dv, pool, score });
   }

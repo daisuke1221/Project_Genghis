@@ -12,6 +12,7 @@ import { tradeTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
 import { runEvents } from './events.js';
+import { diplomacyTick } from './diplomacy.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -87,6 +88,7 @@ export function seasonTick(st) {
     nat.lastIncome = income[nat.id] ?? { gold: 0, food: 0 };
     nat.food = Math.min(nat.food, 60000);
   }
+  diplomacyTick(st);
   techTick(st);
   royalTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;

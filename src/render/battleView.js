@@ -129,8 +129,8 @@ export class BattleView {
     this.root.add(this.selRing);
   }
 
-  nationColor(side) {
-    const nid = side === 'att' ? this.b.attNation : this.b.defNation;
+  nationColor(side, nation) {
+    const nid = nation ?? (side === 'att' ? this.b.attNation : this.b.defNation);
     return new THREE.Color(this.st.nations[nid]?.color ?? '#888').getHex();
   }
 
@@ -160,10 +160,10 @@ export class BattleView {
     const n = Math.max(1, Math.min(7, Math.ceil(u.soldiers / 350)));
     if (n !== o.n) {
       if (o.figures) o.g.remove(o.figures);
-      o.figures = M.troopMarker(u.type, this.nationColor(u.side), n);
+      o.figures = M.troopMarker(u.type, this.nationColor(u.side, u.nation), n);
       o.figures.scale.setScalar(1.05);
       o.figures.rotation.y = u.side === 'att' ? Math.PI / 2 : -Math.PI / 2;
-      const fl = M.flag(this.nationColor(u.side), 1.1);
+      const fl = M.flag(this.nationColor(u.side, u.nation), 1.1);
       fl.position.set(-0.45, 0, -0.45);
       o.figures.add(fl);
       o.g.add(o.figures);
@@ -173,7 +173,7 @@ export class BattleView {
     const pct = Math.max(0, u.soldiers / Math.max(1, u.start));
     const col = u.side === this.playerSide ? '#6fdc6f' : '#ff6a5a';
     o.el.className = `unit-label${u.acted && u.side === this.b.side ? ' done' : ''}`;
-    o.el.innerHTML = `<div>${u.name}<span style="opacity:.8">［${T.short}］</span></div><div>${u.soldiers.toLocaleString()}</div>` +
+    o.el.innerHTML = `<div>${u.ally ? '<span style="color:#9fd0ff">援</span>' : ''}${u.name}<span style="opacity:.8">［${T.short}］</span></div><div>${u.soldiers.toLocaleString()}</div>` +
       `<div class="hp"><i style="width:${pct * 100}%;background:${col}"></i></div><div class="mo"><i style="width:${Math.max(0, u.morale)}%"></i></div>`;
     o.g.visible = !u.routed;
   }

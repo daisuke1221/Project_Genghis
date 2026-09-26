@@ -1,8 +1,33 @@
 // プレイヤー・AI共通の軍事行動（出陣→戦闘→戦後処理）
 import { planMove, moveGenerals, occupy, applyBattle, resolveCaptive, aiCaptiveDecision } from './military.js';
 import { createBattle, autoResolve } from './battle.js';
-import { breakTreaty } from './diplomacy.js';
-import { treaty, log, PROV_DEF } from './state.js';
+import { declareWar, joinWar, refuseCall, atWar, friendsOf, noteConquest } from './diplomacy.js';
+import { log, PROV_DEF, generalsIn, unitCap } from './state.js';
+import { NEIGHBORS } from './geo.js';
+
+// 参戦要請の処理（プレイヤーへの要請は hooks.callToArms で尋ねる）
+export async function handleCalls(st, calls, hooks = {}) {
+  for (const c of calls) {
+    const ok = hooks.callToArms ? await hooks.callToArms(c) : false;
+    if (ok) joinWar(st, c.ally, c.caller, c.enemy);
+    else refuseCall(st, c.ally, c.caller);
+  }
+}
+
+// 隣接地方にいる味方（同盟国・宗主・従属国）の援軍。プレイヤーの武将は当事者のときだけ
+export function gatherReinforcements(st, nid, enemy, target, max = 2) {
+  const friends = friendsOf(st, nid).filter((f) => atWar(st, f, enemy) && f !== st.playerNation);
+  const out = [];
+  for (const q of NEIGHBORS[target]) {
+    const o = st.provinces[q].owner;
+    if (!friends.includes(o)) continue;
+    const gens = generalsIn(st, q, o).filter((g) => !g.moved && g.unit?.soldiers >= unitCap(g) * 0.4);
+    if (gens.length < 2) continue; // 自国の守りを空にはしない
+    gens.sort((a, b) => b.unit.soldiers - a.unit.soldiers);
+    out.push(...gens.slice(0, gens.length - 1));
+  }
+  return out.sort((a, b) => b.unit.soldiers - a.unit.soldiers).slice(0, max).map((g) => g.id);
+}
 
 // hooks.battle(battle) -> Promise<battleResult>   プレイヤーが関わる戦闘
 // hooks.captives(captor, gids) -> Promise<{gid: decision}>
@@ -11,17 +36,21 @@ export async function executeMove(st, nid, gids, from, to, hooks = {}) {
   const plan = planMove(st, nid, gids, to);
   if (plan.kind === 'invalid') return plan;
   if (plan.kind === 'move') { moveGenerals(st, gids, to); return plan; }
-  if (owner && treaty(st, nid, owner)) breakTreaty(st, nid, owner);
+  if (owner && !atWar(st, nid, owner)) await handleCalls(st, declareWar(st, nid, owner), hooks);
   const involved = nid === st.playerNation || owner === st.playerNation;
   if (plan.kind === 'occupy') {
     const captives = occupy(st, nid, gids, to, from);
+    if (owner) noteConquest(st, nid, owner);
     log(st, `${st.nations[nid].name}軍が${PROV_DEF[to].city}を占領した。`, involved);
     await handleCaptives(st, nid, captives, hooks);
     return { kind: 'occupy', captives };
   }
-  const b = createBattle(st, { attNation: nid, attIds: gids, provinceId: to, fromProvince: from });
+  const reinforce = { att: gatherReinforcements(st, nid, owner, to), def: gatherReinforcements(st, owner, nid, to) };
+  const b = createBattle(st, { attNation: nid, attIds: gids, provinceId: to, fromProvince: from, reinforce });
   const result = involved && hooks.battle ? await hooks.battle(b) : autoResolve(b);
   const { msgs, captives } = applyBattle(st, result, gids);
+  for (const id of [...reinforce.att, ...reinforce.def]) if (st.generals[id]) st.generals[id].moved = true;
+  if (result.winner === 'att') noteConquest(st, nid, owner);
   for (const m of msgs) log(st, m, involved);
   const captor = result.winner === 'att' ? nid : owner;
   await handleCaptives(st, captor, captives, hooks);

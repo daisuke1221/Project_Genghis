@@ -40,7 +40,7 @@ const isCastle = (t) => t === 'castle' || t === 'keep';
 function brnd(b) { return rnd(b); }
 
 // ---- 生成 ----
-export function createBattle(st, { attNation, attIds, provinceId, fromProvince }) {
+export function createBattle(st, { attNation, attIds, provinceId, fromProvince, reinforce = { att: [], def: [] } }) {
   const prov = st.provinces[provinceId];
   const def = PDEF[provinceId];
   const defNation = prov.owner;
@@ -54,13 +54,13 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince }
   };
   genMap(b);
   const mk = (g, side) => ({
-    id: g.id, gid: g.id, side, name: g.name, type: g.unit.type,
+    id: g.id, gid: g.id, side, nation: g.nation, ally: g.nation !== (side === 'att' ? attNation : defNation), name: g.name, type: g.unit.type,
     soldiers: g.unit.soldiers, start: g.unit.soldiers, training: g.unit.training,
     morale: Math.min(100, 70 + Math.round(g.cha / 5) + (side === 'def' ? 5 : 0)),
     war: g.war, lead: g.lead, c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
   });
-  const att = attIds.map((id) => st.generals[id]).filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'att'));
-  const dfd = defNation ? generalsIn(st, provinceId, defNation).filter((g) => g.unit?.soldiers > 0).map((g) => mk(g, 'def')) : [];
+  const att = [...attIds, ...(reinforce.att || [])].map((id) => st.generals[id]).filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'att'));
+  const dfd = defNation ? [...generalsIn(st, provinceId, defNation), ...(reinforce.def || []).map((id) => st.generals[id])].filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'def')) : [];
   deploy(b, att, 'att');
   deploy(b, dfd, 'def');
   b.units = [...att, ...dfd];
