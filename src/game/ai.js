@@ -12,7 +12,7 @@ import { executeMove, handleCalls } from './actions.js';
 import { aiDiplomacy, sign, atWar, applyPeace, declareWar } from './diplomacy.js';
 import { aiHireTech } from './tech.js';
 import { aiTrade } from './trade.js';
-import { becomeConsort } from './royal.js';
+import { becomeConsort, markMarriage } from './royal.js';
 import { aiSieges } from './siege.js';
 import { aiAdmin } from './admin.js';
 import { aiSubvert } from './personnel.js';
@@ -49,6 +49,7 @@ export async function aiNationTurn(st, nid, hooks = {}) {
       if (p && !p.married) {
         becomeConsort(st, p, st.nations[st.playerNation].rulerId);
         sign(st, pr.from, st.playerNation, 'alliance');
+        markMarriage(st, pr.from, st.playerNation);
         adjustRelation(st, pr.from, st.playerNation, 30);
       }
     } else if (pr.kind === 'peace') {

@@ -11,6 +11,7 @@ import { killGeneral, healTick } from './military.js';
 import { tradeTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
+import { courtTick, educationYear } from './court.js';
 import { runEvents } from './events.js';
 import { diplomacyTick } from './diplomacy.js';
 import { siegeTick, flushCaptives } from './siege.js';
@@ -102,6 +103,7 @@ export function seasonTick(st) {
   healTick(st);
   techTick(st);
   royalTick(st);
+  courtTick(st);
   personnelTick(st);
   fatigueTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;
@@ -164,6 +166,7 @@ function yearlyEvents(st) {
     }
   }
   personnelYear(st, (t, imp) => log(st, t, imp));
+  educationYear(st);
   // 在野武将の補充（少しずつ新しい人材が現れる）
   const ronin = Object.values(st.generals).filter((g) => g.alive && !g.nation).length;
   for (let i = ronin; i < 16; i += 1) {

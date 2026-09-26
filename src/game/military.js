@@ -11,6 +11,7 @@ import { transferCityTechs } from './tech.js';
 import { orphanNation } from './royal.js';
 import { adminOnConquest } from './admin.js';
 import { battleAftermath, hasTrait } from './personnel.js';
+import { currentHeir, successionDispute, marriageClaimant } from './court.js';
 
 // ---- 徴兵 ----
 export function recruitLimit(st, pid) {
@@ -289,17 +290,45 @@ export function succession(st, nid) {
   const nat = st.nations[nid];
   const old = st.generals[nat.rulerId];
   const cands = nationGenerals(st, nid).filter((g) => g.alive && g.id !== nat.rulerId && !g.captiveOf);
-  if (!cands.length || !nationProvinces(st, nid).length) { destroyNation(st, nid, null); return null; }
-  const fam = cands.filter((g) => g.family);
-  const pool = fam.length ? fam : cands;
-  pool.sort((a, b) => (b.lead + b.pol + b.cha) - (a.lead + a.pol + a.cha));
-  const heir = pool[0];
+  if (!cands.length || !nationProvinces(st, nid).length) {
+    // 婚姻による相続：姫の嫁ぎ先の君主が国を継ぐ
+    const claim = nationProvinces(st, nid).length ? marriageClaimant(st, nid) : null;
+    if (claim) { inheritByMarriage(st, nid, claim); return null; }
+    destroyNation(st, nid, null);
+    return null;
+  }
+  // 一門の跡継ぎがいなければ、姫の嫁ぎ先が婚姻による相続を主張することがある（AIの国のみ）
+  if (nid !== st.playerNation && !cands.some((g) => g.family)) {
+    const claim = marriageClaimant(st, nid);
+    if (claim && (nat.relations[claim.nation] ?? 0) >= 30 && chance(st, 0.35)) { inheritByMarriage(st, nid, claim); return null; }
+  }
+  const designated = nat.heirId && st.generals[nat.heirId]?.alive ? nat.heirId : null;
+  const planned = currentHeir(st, nid);
+  let heir = planned && cands.includes(planned) ? planned : null;
+  if (!heir) {
+    const fam = cands.filter((g) => g.family);
+    const pool = fam.length ? fam : cands;
+    pool.sort((a, b) => (b.lead + b.pol + b.cha) - (a.lead + a.pol + a.cha));
+    heir = pool[0];
+  }
+  delete nat.heirId;
   nat.rulerId = heir.id;
   heir.loyalty = 100;
   if (!heir.family) for (const g of cands) g.loyalty = Math.max(0, g.loyalty - 10);
   heir.family = true;
   log(st, `${nat.name}の${old?.name ?? '君主'}が世を去り、${heir.name}が後を継いだ。`, true);
+  if (old) successionDispute(st, nid, heir, old.id, !!designated && designated === heir.id);
   return heir;
+}
+
+function inheritByMarriage(st, nid, claim) {
+  const nat = st.nations[nid], to = claim.nation;
+  for (const p of nationProvinces(st, nid)) changeOwner(st, p.id, to);
+  for (const g of Object.values(st.generals)) if (g.nation === nid && g.alive) { g.nation = to; g.loyalty = 60; g.family = false; }
+  nat.alive = false;
+  orphanNation(st, nid);
+  for (const o of Object.values(st.nations)) delete o.treaties[nid];
+  log(st, `${nat.name}の家系が絶え、${claim.princess.name}の嫁ぎ先である${st.nations[to].name}が婚姻による相続で国を継いだ。`, true);
 }
 
 export function checkNationAlive(st, nid, byNid) {

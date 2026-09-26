@@ -121,12 +121,20 @@ export function breakTreaty(st, from, to, { quiet = false } = {}) {
   const t = treaty(st, from, to);
   if (!t) return false;
   const fromWasVassal = t === 'vassal' && isVassalOf(st, from, to);
+  const wasMarriage = !!nat(st, from).treaties[to]?.marriage;
   delete nat(st, from).treaties[to];
   delete nat(st, to).treaties[from];
   adjustRelation(st, from, to, -40);
   for (const n of Object.values(st.nations)) if (n.alive && n.id !== from && n.id !== to) adjustRelation(st, from, n.id, -2);
   changeTrust(st, from, t === 'alliance' ? -25 : t === 'truce' ? -15 : fromWasVassal ? -5 : -10);
   onTreatyBroken(st, from, to);
+  if (wasMarriage) {
+    // 婚姻同盟を破れば信用を大きく失い、相手国から嫁いだ妃との仲も冷える
+    changeTrust(st, from, -10);
+    for (const c of Object.values(st.consorts || {})) {
+      if (c.alive && ((c.nation === from && c.origin === to) || (c.nation === to && c.origin === from))) c.affection = Math.max(0, c.affection - 30);
+    }
+  }
   if (!quiet) {
     const what = t === 'vassal' ? (fromWasVassal ? '従属関係（独立を宣言）' : '従属関係') : TREATY_NAMES[t];
     log(st, `${nameOf(st, from)}が${nameOf(st, to)}との${what}を破棄した。`, true);
