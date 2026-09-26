@@ -3,14 +3,41 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { PROVINCES, PROVINCE_TERRAIN, CULTURES } from '../game/data.js';
-import { MAP_W, MAP_H, GRID_W, GRID_H, RES, cells, heightAt, PROV_POS, provinceAt, cellXZ, fbm } from '../game/geo.js';
+import { MAP_W, MAP_H, WORLD, FINE, heightAt, PROV_POS, provinceAt, fineProvinces, fbm, unproject, project, desertAt, isLandAt } from '../game/geo.js';
+import { RIVERS } from '../game/geography.js';
 import { NATION_DEF, generalsIn } from '../game/state.js';
 import { path as tradePath } from '../game/trade.js';
 import { calamityTags } from '../game/calamity.js';
 import { bindPointer, pickAt, tweenFn } from './engine.js';
 import * as M from './models.js';
 
-const W1 = GRID_W + 1;
+// ゲームの範囲（地方がある領域）は細かいメッシュ、その外は粗いメッシュで描く
+const IW = Math.round(MAP_W / FINE) + 1, IH = Math.round(MAP_H / FINE) + 1;
+const OUT = 0.5;
+const NB8 = [1, -1, IW, -IW, IW + 1, IW - 1, -IW + 1, -IW - 1];
+const C = (hex) => new THREE.Color(hex);
+const SAND = C(0xdcc38c), RED_SAND = C(0xcf9a5e), ROCK = C(0x8c8474), SNOW = C(0xf4f4f4), SEA_FLOOR = C(0x3a6a7a);
+const sandTmp = new THREE.Color();
+
+// 緯度・経度による植生の色（砂漠・岩・雪を重ねる）
+function biomeColor(x, z, h, out = new THREE.Color()) {
+  const { lat: lat0, lon } = unproject(x, z);
+  const lat = lat0 + (fbm(x * 0.15, z * 0.15, 61) - 0.5) * 5;
+  if (lat > 66) out.setHex(0x9ea58c);
+  else if (lat > 55) out.setHex(lon > 25 ? 0x4e6e40 : 0x5d7d48);
+  else if (lat > 47) out.setHex(lon < 38 || lon > 122 ? 0x628a47 : 0xa7ab68);
+  else if (lat > 36) out.setHex(lon < 44 ? 0x8f9a5c : lon < 112 ? 0xb3ac74 : 0x6f9a4e);
+  else if (lat > 22) out.setHex(lon < 60 ? 0xc2ae7a : lon < 100 ? 0x8aa052 : 0x5f9447);
+  else out.setHex(lon < 45 ? 0xb0a060 : lon < 100 ? 0x7f9a4a : 0x4f8a3e);
+  const { d, red } = desertAt(x, z);
+  if (d > 0) out.lerp(sandTmp.copy(SAND).lerp(RED_SAND, red), d * 0.85);
+  if (h > 1.4) out.lerp(ROCK, Math.min(0.75, (h - 1.4) / 1.1));
+  const snowline = 2.5 - Math.max(0, lat0 - 35) * 0.03;
+  if (h > snowline) out.lerp(SNOW, Math.min(1, (h - snowline) / 0.9));
+  if (h < 0) out.lerp(SEA_FLOOR, Math.min(1, -h / 2));
+  out.offsetHSL(0, 0, (fbm(x * 0.4, z * 0.4, 21) - 0.5) * 0.1);
+  return out;
+}
 
 export class WorldView {
   constructor(engine) {
@@ -58,51 +85,113 @@ export class WorldView {
   }
 
   buildTerrain() {
-    const pos = new Float32Array(W1 * (GRID_H + 1) * 3);
-    this.heights = new Float32Array(W1 * (GRID_H + 1));
-    for (let j = 0; j <= GRID_H; j++) for (let i = 0; i <= GRID_W; i++) {
-      const k = j * W1 + i;
-      const [x, z] = cellXZ(i, j);
+    // ゲームの範囲
+    const pos = new Float32Array(IW * IH * 3);
+    this.heights = new Float32Array(IW * IH);
+    for (let j = 0; j < IH; j++) for (let i = 0; i < IW; i++) {
+      const k = j * IW + i;
+      const x = -MAP_W / 2 + i * FINE, z = -MAP_H / 2 + j * FINE;
       const h = heightAt(x, z);
       this.heights[k] = h;
       pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z;
     }
+    const g = this.gridGeometry(pos, IW, IH);
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
+    this.terrainGeo = g;
+    this.terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+    this.scene.add(this.terrain);
+    this.fineProv = fineProvinces().arr;
+    this.baseColor = new Float32Array(pos.length);
+    const col = new THREE.Color(), tc = new THREE.Color();
+    for (let k = 0; k < IW * IH; k++) {
+      const x = pos[k * 3], z = pos[k * 3 + 2], h = this.heights[k];
+      biomeColor(x, z, h, col);
+      const v = this.fineProv[k];
+      if (v >= 0 && h > 0) col.lerp(tc.setHex(PROVINCE_TERRAIN[PROVINCES[v].terrain].color), 0.3);
+      this.baseColor[k * 3] = col.r; this.baseColor[k * 3 + 1] = col.g; this.baseColor[k * 3 + 2] = col.b;
+    }
+    this.buildOuter();
+    this.buildRivers();
+  }
+
+  gridGeometry(pos, w, h, skip = null) {
     const idx = [];
-    for (let j = 0; j < GRID_H; j++) for (let i = 0; i < GRID_W; i++) {
-      const a = j * W1 + i, b = a + 1, c = a + W1, d = c + 1;
+    for (let j = 0; j < h - 1; j++) for (let i = 0; i < w - 1; i++) {
+      if (skip?.(i, j)) continue;
+      const a = j * w + i, b = a + 1, c = a + w, d = c + 1;
       idx.push(a, c, b, b, c, d);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
     g.setIndex(idx);
     g.computeVertexNormals();
-    this.terrainGeo = g;
-    this.terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false }));
-    this.scene.add(this.terrain);
-    // 地方ごとの頂点
-    this.provVerts = PROVINCES.map(() => []);
-    for (let k = 0; k < cells.length; k++) if (cells[k] >= 0) this.provVerts[cells[k]].push(k);
-    this.baseColor = new Float32Array(pos.length);
-    const col = new THREE.Color();
-    for (let k = 0; k < cells.length; k++) {
-      const v = cells[k];
-      const [x, z] = cellXZ(k % W1, Math.floor(k / W1));
-      const h = this.heights[k];
-      const n = fbm(x * 0.4, z * 0.4, 21) - 0.5;
-      if (v >= 0) col.setHex(PROVINCE_TERRAIN[PROVINCES[v].terrain].color);
-      else if (v === -2) col.setHex(z < -8 ? 0x8f9a78 : z > 8 ? 0xd4bd86 : 0xa9a27a);
-      else col.setHex(0xc2b280);
-      col.offsetHSL(0, 0, n * 0.12);
-      if (h > 3.2) col.lerp(new THREE.Color(0xf4f4f4), Math.min(1, (h - 3.2) / 1.2));
-      if (h < 0) col.lerp(new THREE.Color(0x3a6a7a), Math.min(1, -h / 2));
-      this.baseColor[k * 3] = col.r; this.baseColor[k * 3 + 1] = col.g; this.baseColor[k * 3 + 2] = col.b;
+    return g;
+  }
+
+  // ゲームの範囲の外：実際の陸と海を描くが、操作はできない（少しくすませる）
+  buildOuter() {
+    const w = Math.round((WORLD.x1 - WORLD.x0) / OUT) + 1, h = Math.round((WORLD.z1 - WORLD.z0) / OUT) + 1;
+    const pos = new Float32Array(w * h * 3), colors = new Float32Array(w * h * 3);
+    const col = new THREE.Color(), gray = C(0x8a8a80);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const k = j * w + i;
+      const x = WORLD.x0 + i * OUT, z = WORLD.z0 + j * OUT;
+      const hh = heightAt(x, z);
+      pos[k * 3] = x; pos[k * 3 + 1] = hh - 0.03; pos[k * 3 + 2] = z;
+      biomeColor(x, z, hh, col);
+      // ゲームの範囲から離れるほど少しずつくすませる（境目を目立たせない）
+      const away = Math.max(Math.abs(x) - MAP_W / 2, Math.abs(z) - MAP_H / 2, 0);
+      const f = Math.min(1, away / 8);
+      if (hh > 0) col.lerp(gray, 0.28 * f).multiplyScalar(1 - 0.12 * f);
+      colors[k * 3] = col.r; colors[k * 3 + 1] = col.g; colors[k * 3 + 2] = col.b;
     }
+    // ゲームの範囲の内側（外周1マスは重ねて隙間を防ぐ）は細かいメッシュに任せる
+    const inside = (i, j) => {
+      const x = WORLD.x0 + i * OUT, z = WORLD.z0 + j * OUT;
+      return x >= -MAP_W / 2 + OUT && x + OUT <= MAP_W / 2 - OUT && z >= -MAP_H / 2 + OUT && z + OUT <= MAP_H / 2 - OUT;
+    };
+    const g = this.gridGeometry(pos, w, h, inside);
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.outer = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    this.scene.add(this.outer);
+  }
+
+  // 大河：地形に沿って流れる細い帯（河口へ向かって太くなる）
+  buildRivers() {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3d7fb5, roughness: 0.35, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: -2 });
+    for (const R of RIVERS) {
+      const pts = R.pts.map(([lat, lon]) => { const p = project(lat, lon); return new THREE.Vector3(p.x, 0, p.z); });
+      const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+      const n = Math.max(8, Math.round(curve.getLength() / 0.25));
+      const sp = curve.getSpacedPoints(n);
+      const pos = [], idx = [];
+      let prevLand = false;
+      for (let i = 0; i < sp.length; i++) {
+        const p = sp[i];
+        const q = sp[Math.min(sp.length - 1, i + 1)], o = sp[Math.max(0, i - 1)];
+        const dx = q.x - o.x, dz = q.z - o.z, L = Math.hypot(dx, dz) || 1;
+        const half = (0.1 + 0.18 * (i / sp.length)) * R.w;
+        const nx = (-dz / L) * half, nz = (dx / L) * half;
+        const onLand = isLandAt(p.x, p.z);
+        const y = Math.max(0.02, heightAt(p.x, p.z)) + 0.05;
+        pos.push(p.x + nx, y, p.z + nz, p.x - nx, y, p.z - nz);
+        if (i > 0 && onLand && prevLand) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+        prevLand = onLand;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      group.add(new THREE.Mesh(g, mat));
+    }
+    this.scene.add(group);
+    this.rivers = group;
   }
 
   buildWater() {
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(600, 600, 1, 1),
+      new THREE.PlaneGeometry(900, 900, 1, 1),
       new THREE.MeshStandardMaterial({ color: 0x2f6f9f, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.88 }),
     );
     water.rotation.x = -Math.PI / 2;
@@ -115,13 +204,18 @@ export class WorldView {
     const pts = [];
     let seed = 12345;
     const r = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-    for (let n = 0; n < 9000 && pts.length < 2200; n++) {
-      const x = (r() - 0.5) * MAP_W, z = (r() - 0.5) * MAP_H;
-      const p = provinceAt(x, z);
+    const W = WORLD.x1 - WORLD.x0, H = WORLD.z1 - WORLD.z0;
+    for (let n = 0; n < 40000 && pts.length < 4200; n++) {
+      const x = WORLD.x0 + r() * W, z = WORLD.z0 + r() * H;
       const h = heightAt(x, z);
-      if (h < 0.3 || h > 3) continue;
+      if (h < 0.3 || h > 2) continue;
+      if (desertAt(x, z).d > 0.3) continue;
+      const { lat, lon } = unproject(x, z);
+      const p = provinceAt(x, z);
       const def = p ? PROVINCES.find((q) => q.id === p) : null;
-      const forest = def ? def.terrain === 'forest' || (def.terrain === 'mountain' && r() < 0.35) || (def.terrain === 'farmland' && r() < 0.12) : z < -10 && r() < 0.5;
+      let forest;
+      if (def) forest = def.terrain === 'forest' || (def.terrain === 'mountain' && r() < 0.35) || (def.terrain === 'farmland' && r() < 0.12);
+      else forest = (lat > 52 && lat < 66 && r() < 0.7) || (lat > 45 && lat <= 52 && (lon < 38 || lon > 122) && r() < 0.4) || (lat < 25 && lon > 95 && r() < 0.5);
       if (!forest) continue;
       if (fbm(x * 0.3, z * 0.3, 33) < 0.45) continue;
       pts.push([x, h, z, 0.5 + r() * 0.5]);
@@ -165,10 +259,11 @@ export class WorldView {
     const white = new THREE.Color(0xf2f4f6), gold = new THREE.Color(0xd8b04a), hl = new THREE.Color(0xfff1a8), red = new THREE.Color(0xff7050);
     const selIdx = this.selected ? PROVINCES.findIndex((p) => p.id === this.selected) : -1;
     const targetIdx = new Set([...this.targets].map((t) => PROVINCES.findIndex((p) => p.id === t)));
+    const cells = this.fineProv;
     for (let k = 0; k < cells.length; k++) {
       c.setRGB(this.baseColor[k * 3], this.baseColor[k * 3 + 1], this.baseColor[k * 3 + 2]);
       const v = cells[k];
-      const z = -MAP_H / 2 + Math.floor(k / W1) * RES;
+      const z = -MAP_H / 2 + Math.floor(k / IW) * FINE;
       if (this.heights[k] > 0) {
         if (season === 3) c.lerp(white, Math.max(0, Math.min(0.75, (-z + 6) / 30)));
         else if (season === 2) c.lerp(gold, 0.12);
@@ -178,15 +273,15 @@ export class WorldView {
         if (own) c.lerp(nationColor[own], 0.42);
         else c.lerp(tmp.setHex(0x9a9a9a), 0.25);
         // 境界線
-        let border = 0;
-        for (const d of [1, -1, W1, -W1]) {
+        // 周囲8方向のうち、他国・他の地方がどれだけあるかで濃さを変える（境界の階段を目立たせない）
+        let nat = 0, prov = 0;
+        for (const d of NB8) {
           const nb = cells[k + d];
-          if (nb === undefined || nb === v) continue;
-          if (nb < 0) continue;
-          border = Math.max(border, ownerOf[nb] !== own ? 2 : 1);
+          if (nb === undefined || nb === v || nb < 0) continue;
+          if (ownerOf[nb] !== own) nat++; else prov++;
         }
-        if (border === 2) c.multiplyScalar(0.35);
-        else if (border === 1) c.multiplyScalar(0.72);
+        if (nat) c.multiplyScalar(1 - Math.min(0.7, 0.2 + nat * 0.12));
+        else if (prov) c.multiplyScalar(1 - Math.min(0.32, 0.1 + prov * 0.06));
         if (v === selIdx) c.lerp(hl, 0.35);
         if (targetIdx.has(v)) {
           const enemy = own !== (st?.playerNation);
