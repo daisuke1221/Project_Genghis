@@ -205,6 +205,7 @@ input[type=range] { accent-color: var(--gold); }
 @media (max-width: 800px) { .dip-wrap { grid-template-columns: 1fr; } }
 
 /* ---------- 籠城・合戦 ---------- */
+.calamity-tag { font-size: 11px; color: #f0e6c0; background: rgba(70,60,20,.8); border: 1px solid #a89040; border-radius: 3px; padding: 0 4px; margin-top: 2px; }
 .siege-tag { font-size: 11px; color: #ffd0c0; background: rgba(120,20,10,.75); border: 1px solid; border-radius: 3px; padding: 0 4px; margin-top: 2px; }
 .siege-box { background: rgba(120,30,20,.25); border: 1px solid rgba(211,90,74,.6); border-radius: 4px; padding: 8px; }
 .weather-tag { font-size: 13px; color: #cfe6ff; }

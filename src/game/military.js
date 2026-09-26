@@ -11,6 +11,7 @@ import { transferCityTechs, captureArtisans } from './tech.js';
 import { learnFrom } from './research.js';
 import { orphanNation } from './royal.js';
 import { adminOnConquest } from './admin.js';
+import { faithOnConquest } from './faith.js';
 import { battleAftermath, hasTrait } from './personnel.js';
 import { hireChanceWith, tryHireWith } from './talent.js';
 import { currentHeir, successionDispute, marriageClaimant } from './court.js';
@@ -165,6 +166,7 @@ export function changeOwner(st, pid, nid) {
   p.delegated = nid !== st.playerNation;
   p.city.loyalty = Math.min(p.city.loyalty, 35);
   adminOnConquest(st, pid);
+  faithOnConquest(st, pid, nid, prev);
   p.city.pop = Math.round(p.city.pop * 0.92);
   p.governorId = null;
   if (p.city.wallProgress !== null) p.city.wallProgress = null;

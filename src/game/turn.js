@@ -20,6 +20,8 @@ import { adminTick } from './admin.js';
 import { personnelTick, personnelYear, hasTrait } from './personnel.js';
 import { supplyTick, mercTick, fatigueTick } from './warfare.js';
 import { researchTick } from './research.js';
+import { provinceCalamity, calamityTick } from './calamity.js';
+import { faithTick, holyWarTurn } from './faith.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -33,6 +35,8 @@ export async function endTurn(st, hooks = {}) {
   }
   if (st.nations[player].alive) delegateDevelop(st, player);
   seasonTick(st);
+  // 聖戦の呼びかけ
+  if (!st.over) await holyWarTurn(st, hooks);
   // 在野の人物の放浪と仕官の申し出
   for (const pr of roninTick(st)) {
     const ok = hooks.proposal ? await hooks.proposal(pr) : false;
@@ -107,6 +111,8 @@ export function seasonTick(st) {
     nat.lastIncome = income[nat.id] ?? { gold: 0, food: 0 };
     nat.food = Math.min(nat.food, 60000);
   }
+  calamityTick(st);
+  faithTick(st);
   diplomacyTick(st);
   healTick(st);
   techTick(st);
@@ -125,11 +131,10 @@ function randomEvent(st, p, y) {
   const note = (t) => { if (mine) log(st, `【${def.city}】${t}`, true); };
   const nat = st.nations[p.owner];
   if (st.season === 2 && chance(st, 0.08)) { const f = Math.round(y.food * 0.5); nat.food += f; note(`豊作！食糧+${f}`); }
-  else if (st.season === 1 && chance(st, 0.04)) { const f = Math.round(y.food * 0.8); nat.food -= f; note(`蝗害が発生。食糧-${f}`); }
   if (st.season === 3 && def.terrain === 'steppe' && chance(st, 0.12)) {
     c.horses = Math.round(c.horses * 0.6); c.pop = Math.round(c.pop * 0.97); note('寒雪害（ゾド）で家畜が大量に死んだ。');
   }
-  if (chance(st, 0.015)) { c.pop = Math.round(c.pop * 0.9); note('疫病が流行し、人口が減少した。'); }
+  provinceCalamity(st, p, y, note);
   adminTick(st, p.id, y, note);
   if (c.loyalty < 25 && chance(st, 0.3 * (c.order < 40 ? 1.5 : c.order > 70 ? 0.5 : 1))) {
     nat.gold = Math.max(0, nat.gold - 150); c.pop = Math.round(c.pop * 0.95); c.loyalty += 12;

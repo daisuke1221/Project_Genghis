@@ -7,6 +7,8 @@ import { atWar, breakTreaty, friendsOf, enemiesOf } from './diplomacy.js';
 import { roleHolder, rebelRisk, hasTrait } from './personnel.js';
 import { adminOf } from './admin.js';
 import { available as availableInnov } from './research.js';
+import { plagueOf, famineOf, PLAGUE_LEVELS } from './calamity.js';
+import { nationAuthority, pietyOf, isBanned } from './faith.js';
 
 export const strategistOf = (st, nid) => roleHolder(st, nid, 'strategist');
 const canAct = (st, g) => g && !g.moved && !(g.wound > st.turn) && !g.captiveOf;
@@ -208,7 +210,17 @@ export function strategistAdvice(st, nid) {
     if (st.season === 0 && c.grid.some((t) => t.t === 'river') && c.irrigation < 30) add(40, `夏に${PROV_DEF[p.id].city}の川が氾濫するおそれがあります。治水を。`);
     if (c.order < 35) add(55, `${PROV_DEF[p.id].city}の治安が乱れています（${c.order}）。巡察を。`);
     if (c.loyalty < 35) add(58, `${PROV_DEF[p.id].city}の民が不満を募らせています（民忠${c.loyalty}）。反乱に注意を。`);
+    const pl = plagueOf(st, p.id);
+    if (pl) add(66 + pl.sev * 4, `${PROV_DEF[p.id].city}で${PLAGUE_LEVELS[pl.sev].name}が広がっています。施療を。${c.quarantine ? '' : '封鎖すれば隣への広がりを抑えられます。'}`);
+    else if (!c.quarantine) {
+      const src = NEIGHBORS[p.id].find((q) => plagueOf(st, q)?.sev >= 2);
+      if (src) add(52, `隣の${PROV_DEF[src].city}で疫病が猛威をふるっています。${PROV_DEF[p.id].city}を封鎖しては。`);
+    } else if (!NEIGHBORS[p.id].some((q) => plagueOf(st, q))) add(30, `${PROV_DEF[p.id].city}の封鎖を解いてもよい頃合いです。`);
+    if (famineOf(st, p.id)) add(56, `${PROV_DEF[p.id].city}が飢饉に苦しんでいます。施しで民を救えば、飢饉が早く明けます。`);
   }
+  const A = nationAuthority(st, nid);
+  if (A?.ban && isBanned(st, nid)) add(75, `${A.ban}を受けています。「信仰」から贖罪すれば解かれます。`);
+  else if (A?.ban && pietyOf(st, nid) < 20) add(65, `${A.title}の信任が地に落ちています（${pietyOf(st, nid)}）。このままでは${A.ban}されかねません。寄進を。`);
   const soldiers = Object.values(st.generals).filter((g) => g.alive && g.nation === nid).reduce((a, g) => a + (g.unit?.soldiers ?? 0), 0);
   const net = (nat.lastIncome?.food ?? 0) - soldiers * 0.1;
   if (net < 0 && nat.food < -net * 3) add(70, `兵糧が心もとありません。このままでは${Math.max(1, Math.floor(nat.food / -net))}季ほどで尽きます。`);

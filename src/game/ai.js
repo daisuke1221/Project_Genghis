@@ -20,6 +20,7 @@ import { aiStrategist } from './strategist.js';
 import { signPact, signTribute, joinSummit } from './statecraft.js';
 import { unitAvailable, aiMercs } from './warfare.js';
 import { enemiesOf } from './diplomacy.js';
+import { aiFaith } from './faith.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -100,6 +101,7 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   // 調略
   aiSubvert(st, nid, (t, imp) => log(st, t, imp));
   aiStrategist(st, nid);
+  aiFaith(st, nid);
 
   // 傭兵・徴兵
   aiMercs(st, nid, enemiesOf(st, nid).length > 0);
