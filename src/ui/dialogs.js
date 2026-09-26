@@ -13,6 +13,7 @@ import { defenders, initialSupply, siegeAt } from '../game/siege.js';
 import { traitChips, rankLabel, loyaltyCell, compatCell } from './retainerDialog.js';
 import { canPromote, promoteCost, promote, roleOf, ROLES } from '../game/personnel.js';
 import { chanceText, strategistOf } from '../game/strategist.js';
+import { unitTypesFor, mercOffers, hireMerc, MERC_TERM, fatigueOf } from '../game/warfare.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -35,7 +36,7 @@ export function recruitDialog(app, pid) {
             const u = g.unit;
             const has = u && u.soldiers > 0;
             const type = has ? u.type : (g._rtype ?? u?.type ?? 'inf');
-            const opts = UNIT_ORDER.map((t) => `<option value="${t}" ${t === type ? 'selected' : ''}>${UNIT_TYPES[t].name}</option>`).join('');
+            const opts = unitTypesFor(st, nid).map((t) => `<option value="${t}" ${t === type ? 'selected' : ''}>${UNIT_TYPES[t].name}${UNIT_TYPES[t].cultures ? '★' : ''}</option>`).join('');
             const q = recruitQuote(st, g.id, type, 999999);
             return `<tr><td>${esc(g.name)}</td><td>${g.lead}</td>
               <td><select data-type="${g.id}" ${has ? 'disabled' : ''}>${opts}</select></td>
@@ -48,7 +49,13 @@ export function recruitDialog(app, pid) {
                 ${q.ok ? '' : `<span class="muted" style="font-size:11px">${esc(q.reason)}</span>`}
               </td></tr>`;
           }).join('')}</table>
-          <div class="muted" style="margin-top:8px">兵種の費用（1人あたり）：${UNIT_ORDER.map((t) => `${UNIT_TYPES[t].name} ${UNIT_TYPES[t].cost}金${UNIT_TYPES[t].horses ? `＋馬${UNIT_TYPES[t].horses}` : ''}`).join('／')}。攻城兵には工房が必要。兵は毎季、兵数×0.1の食糧と×0.04の金を消費します。</div>`;
+          <div class="muted" style="margin-top:8px">兵種の費用（1人あたり）：${unitTypesFor(st, nid).map((t) => `${UNIT_TYPES[t].name} ${UNIT_TYPES[t].cost}金${UNIT_TYPES[t].horses ? `＋馬${UNIT_TYPES[t].horses}` : ''}`).join('／')}。攻城兵には工房が必要。兵は毎季、兵数×0.1の食糧と×0.04の金を消費します。</div>
+          ${unitTypesFor(st, nid).filter((t) => UNIT_TYPES[t].cultures).map((t) => `<div class="muted">★<b>${UNIT_TYPES[t].name}</b>（攻${UNIT_TYPES[t].atk} 防${UNIT_TYPES[t].def} 移${UNIT_TYPES[t].move} 射${UNIT_TYPES[t].range}・兵舎が必要）：${UNIT_TYPES[t].desc}</div>`).join('')}
+          <h3>傭兵</h3>
+          <p class="muted">契約金を払うと、傭兵隊長が兵を率いてすぐに加わります（${MERC_TERM}季の契約・毎季給金）。給金が払えないと去っていきます。</p>
+          <table class="list"><tr><th>隊長</th><th>武</th><th>統</th><th>兵</th><th>訓練</th><th>契約金</th><th>給金/季</th><th></th></tr>
+          ${mercOffers(st, nid).map((o) => `<tr><td>${esc(o.name)}</td><td>${o.war}</td><td>${o.lead}</td><td>${UNIT_TYPES[o.type].name} ${fmt(o.soldiers)}</td><td>${o.training}</td><td>${fmt(o.fee)}</td><td>${fmt(o.upkeep)}</td>
+            <td><button class="btn small" data-merc="${o.id}" ${nat.gold < o.fee || st.sieges?.[pid] ? 'disabled' : ''}>契約する</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">今季は傭兵がいません</td></tr>'}</table>`;
       };
       el.onchange = (e) => {
         const id = e.target.dataset.type;
@@ -67,6 +74,8 @@ export function recruitDialog(app, pid) {
         }
         const d = e.target.closest('[data-d]');
         if (d) { dismiss(st, d.dataset.d, 999999); render(); }
+        const m = e.target.closest('[data-merc]');
+        if (m) { const r = hireMerc(st, nid, m.dataset.merc, pid); if (r.ok) { audio.sfx('coin'); toast(`${r.general.name}と契約した`); } else toast(r.reason); render(); app.renderTopbar(); }
       };
       render();
     },
@@ -86,12 +95,13 @@ export function sortieDialog(app, pid) {
       const render = () => {
         const total = [...picked].reduce((s, id) => s + (st.generals[id].unit?.soldiers ?? 0), 0);
         el.innerHTML = `<p class="muted">出陣させる武将を選んでください。敵地へ攻め込むと合戦になります。自領へは移動だけです。<br>武将を全員出すと城の守りが空になるので注意。</p>
-          <table class="list"><tr><th></th><th>武将</th><th>武</th><th>統</th><th>兵種</th><th>兵数</th><th>訓練</th></tr>
+          <table class="list"><tr><th></th><th>武将</th><th>武</th><th>統</th><th>兵種</th><th>兵数</th><th>訓練</th><th>疲労</th></tr>
           ${gens.map((g) => hurt(g)
-            ? `<tr class="muted"><td></td><td>${esc(g.name)} <span class="neg">負傷（あと${g.wound - st.turn}季）</span></td><td>${g.war}</td><td>${g.lead}</td><td colspan="3">出陣できない</td></tr>`
+            ? `<tr class="muted"><td></td><td>${esc(g.name)} <span class="neg">負傷（あと${g.wound - st.turn}季）</span></td><td>${g.war}</td><td>${g.lead}</td><td colspan="4">出陣できない</td></tr>`
             : `<tr class="clickable ${picked.has(g.id) ? 'sel' : ''}" data-g="${g.id}"><td><input type="checkbox" ${picked.has(g.id) ? 'checked' : ''}></td>
             <td>${esc(g.name)}${st.nations[nid].rulerId === g.id ? '（君主）' : ''}</td><td>${g.war}</td><td>${g.lead}</td>
-            <td>${g.unit?.soldiers > 0 ? UNIT_TYPES[g.unit.type].name : '―'}</td><td>${fmt(g.unit?.soldiers ?? 0)}</td><td>${g.unit?.training ?? '-'}</td></tr>`).join('')}</table>
+            <td>${g.unit?.soldiers > 0 ? UNIT_TYPES[g.unit.type].name : '―'}</td><td>${fmt(g.unit?.soldiers ?? 0)}</td><td>${g.unit?.training ?? '-'}</td><td class="${fatigueOf(g) >= 40 ? 'neg' : ''}">${fatigueOf(g) || '-'}</td></tr>`).join('')}</table>
+          <p class="muted">自領を通って2地方先（騎馬だけの軍なら3地方先）まで進めます。長い行軍・連戦で疲労がたまり、士気と攻撃力が落ちます（休めば回復）。冬は海を渡れません。</p>
           <p>選択：${picked.size}人・兵 <b>${fmt(total)}</b></p>
           ${picked.has(st.nations[nid].rulerId) && !st.options.protectRuler ? '<p class="neg">⚠ 君主が出陣します。部隊が敗走すると討死・負傷・捕虜のおそれがあります（設定で君主の討死を防ぐこともできます）。</p>' : ''}`;
       };
@@ -307,6 +317,11 @@ export function helpDialog() {
       <ul><li>成功率は数字では示されません。軍師がいると、各命令の見込みを言葉で助言してくれます（政治力が高いほど見立てが正確）。</li>
       <li>軍師は敵の調略を見破り（内通した家臣は家臣団で詰問・追放）、外交画面で「離間の計」、敵地の画面で「流言」を仕掛けられます（その季節は出陣不可）。</li>
       <li>地図の左上に、軍師の助言（謀反のおそれ・侵攻の気配・攻めどき・内政の不安など）が表示されます。</li></ul>
+      <h3>軍事の拡張</h3>
+      <ul><li>文化ごとの固有兵種（ケシク・マムルーク・騎士・武士・弩兵・象兵）を兵舎のある都市で徴兵できます。徴兵画面では傭兵とも契約できます。</li>
+      <li>合戦の前に陣形（魚鱗・鶴翼・鋒矢・方円・長蛇）を選べます。</li>
+      <li>自領を通って2地方先（騎馬のみなら3）まで遠征できます。冬は海を渡れません。首都とつながっていない地方は補給が断たれます。</li>
+      <li>連戦や長い行軍で疲労がたまり、休むと回復します。攻め込まれた地方には、隣の自領の武将が自動で迎撃に駆けつけます。</li></ul>
       <h3>後宮・王族</h3>
       <ul><li>上部の「後宮」から妃を寵愛し（一季に一人）、子を授かりましょう。男子は15歳で一門の武将として出仕し、後継ぎになります。</li>
       <li>姫が15歳になったら、他国の君主に嫁がせて婚姻同盟を結ぶか、家臣に嫁がせて忠誠を100にできます。他国に縁談を申し込んで妃を迎えることもできます。</li></ul>

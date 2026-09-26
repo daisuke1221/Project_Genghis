@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { TRAITS, ROLES } from '../game/personnel.js';
 import { chanceText } from '../game/strategist.js';
+import { formationOf } from '../game/warfare.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { UNIT_TYPES } from '../game/data.js';
@@ -265,6 +266,8 @@ export class BattleView {
     if (W.desc) html += `<div class="muted">${W.glyph} ${W.name}：${W.desc}</div>`;
     const land = { steppe: '草原：騎馬の攻撃+15%', mountain: '山岳：騎馬の白兵-10%・歩兵の白兵+10%', forest: '森林地帯：歩兵の白兵+10%' }[this.b.terrain];
     if (land) html += `<div class="muted">${land}</div>`;
+    const enemySide = this.playerSide === 'att' ? 'def' : 'att';
+    html += `<div class="muted">陣形：自軍 ${formationOf(this.b, this.playerSide).name}／敵軍 ${formationOf(this.b, enemySide).name}</div>`;
     if (this.b.notes?.length) html += `<div class="muted">${this.b.notes.slice(-3).join('<br>')}</div>`;
     if (this.tacticMode === 'duel' && this.selected && u && u.side !== this.playerSide) html += this.foresee(duelWinChance(this.selected, u), `dw:${this.selected.id}:${u.id}`) ? `<div>一騎討ち：応じるか ${this.foresee(duelAcceptChance(this.b, this.selected, u), `da:${this.selected.id}:${u.id}`)}<br>勝てるか ${this.foresee(duelWinChance(this.selected, u), `dw:${this.selected.id}:${u.id}`)}</div>` : '<div class="muted">一騎討ちの相手を選ぶ（軍師がいれば見立てを聞ける）</div>';
     else if (this.tacticMode && this.selected && u && u.side !== this.playerSide) html += this.foresee(tacticChance(this.b, this.selected, this.tacticMode, u), `tc:${this.selected.id}:${u.id}:${this.tacticMode}`) ? `<div>${TACTICS[this.tacticMode].name}：${this.foresee(tacticChance(this.b, this.selected, this.tacticMode, u), `tc:${this.selected.id}:${u.id}:${this.tacticMode}`)}</div>` : '';
@@ -279,6 +282,8 @@ export class BattleView {
         <span>武力/統率</span><span>${u.war} / ${u.lead}</span>
         <span>地形</span><span>${BATTLE_TERRAIN[tt].name}</span>
         ${u.role ? `<span>役職</span><span>${ROLES[u.role].name}</span>` : ''}
+        ${T.desc ? `<span>兵種の特性</span><span>${T.desc}</span>` : ''}
+        ${u.fatigue >= 20 ? `<span>疲労</span><span class="neg">${u.fatigue}</span>` : ''}
         ${u.traits?.length ? `<span>特技</span><span>${u.traits.map((t) => TRAITS[t].name).join('・')}</span>` : ''}</div></div>`;
       if (this.selected && u.side !== this.playerSide && this.selected.side === this.playerSide) {
         const est = Math.round(estimateDamage(this.b, this.selected, u));

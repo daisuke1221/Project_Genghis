@@ -189,6 +189,7 @@ export function battleAftermath(st, result) {
     const g = st.generals[u.gid];
     if (!g?.alive) continue;
     const won = u.side === result.winner;
+    g.fatigue = Math.min(100, (g.fatigue ?? 0) + 20);
     addMerit(g, (won ? 12 : 4) + (u.commander && won ? 10 : 0) + (u.duelWins ?? 0) * 15);
     gainExp(st, g, 'lead', won ? 20 : 10);
     gainExp(st, g, 'war', 10 + (u.duelWins ?? 0) * 30);

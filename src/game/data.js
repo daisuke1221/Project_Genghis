@@ -336,13 +336,38 @@ export const WALLS = [
 
 // 兵種
 export const UNIT_TYPES = {
-  cav:   { name: '騎兵', short: '騎', atk: 1.25, def: 0.9, move: 5, range: 1, cost: 0.8, horses: 0.5 },
-  harch: { name: '弓騎兵', short: '弓騎', atk: 1.0, def: 0.8, move: 5, range: 2, cost: 0.9, horses: 0.5 },
-  inf:   { name: '歩兵', short: '歩', atk: 1.0, def: 1.25, move: 3, range: 1, cost: 0.5, horses: 0 },
-  arch:  { name: '弓兵', short: '弓', atk: 0.9, def: 0.8, move: 3, range: 3, cost: 0.6, horses: 0 },
+  cav:   { name: '騎兵', short: '騎', atk: 1.25, def: 0.9, move: 5, range: 1, cost: 0.8, horses: 0.5, mounted: true },
+  harch: { name: '弓騎兵', short: '弓騎', atk: 1.0, def: 0.8, move: 5, range: 2, cost: 0.9, horses: 0.5, mounted: true },
+  inf:   { name: '歩兵', short: '歩', atk: 1.0, def: 1.25, move: 3, range: 1, cost: 0.5, horses: 0, foot: true },
+  arch:  { name: '弓兵', short: '弓', atk: 0.9, def: 0.8, move: 3, range: 3, cost: 0.6, horses: 0, foot: true },
   siege: { name: '攻城兵', short: '攻', atk: 0.7, def: 0.6, move: 2, range: 3, cost: 1.5, horses: 0, siege: 3, needs: 'workshop' },
+  // 文化固有の兵種（兵舎が必要）
+  keshig:   { name: 'ケシク', short: '親衛', atk: 1.4, def: 1.05, move: 5, range: 1, cost: 1.3, horses: 0.8, mounted: true, cultures: ['mongol'], needs: 'barracks', morale: 10, base: 'cav',
+    desc: '大ハーンの親衛騎兵。開戦時の士気+10' },
+  mamluk:   { name: 'マムルーク', short: '奴騎', atk: 1.15, def: 1.0, move: 5, range: 2, cost: 1.3, horses: 0.6, mounted: true, cultures: ['islamic', 'turkic'], needs: 'barracks', noMeleePenalty: true, base: 'harch',
+    desc: '重装の騎射兵。弓兵なのに白兵戦も弱くない' },
+  knight:   { name: '騎士', short: '騎士', atk: 1.5, def: 1.15, move: 4, range: 1, cost: 1.5, horses: 0.8, mounted: true, cultures: ['european', 'georgian', 'greek', 'slavic'], needs: 'barracks', charge: 1.5, base: 'cav',
+    desc: '重装騎兵。突撃が強烈（×1.5）' },
+  samurai:  { name: '武士', short: '武士', atk: 1.2, def: 1.05, move: 4, range: 2, cost: 1.2, horses: 0.5, mounted: true, cultures: ['japanese'], needs: 'barracks', duel: 5, noMeleePenalty: true, base: 'harch',
+    desc: '弓馬の道に長けた騎射武者。一騎討ちで武力+5' },
+  crossbow: { name: '弩兵', short: '弩', atk: 1.1, def: 0.9, move: 3, range: 3, cost: 0.8, horses: 0, foot: true, cultures: ['chinese', 'korean', 'tibetan'], needs: 'barracks', pierce: true, base: 'arch',
+    desc: '強弩の兵。雨でも射撃が衰えにくく、城壁越しでも威力が落ちない' },
+  elephant: { name: '象兵', short: '象', atk: 1.5, def: 1.35, move: 3, range: 1, cost: 1.8, horses: 0, cultures: ['indian'], needs: 'barracks', fear: true, base: 'elephant',
+    desc: '戦象。騎馬は怯えて象への攻撃が-25%、象の騎馬への攻撃は+20%' },
 };
-export const UNIT_ORDER = ['cav', 'harch', 'inf', 'arch', 'siege'];
+export const UNIT_ORDER = ['cav', 'harch', 'inf', 'arch', 'siege', 'keshig', 'mamluk', 'knight', 'samurai', 'crossbow', 'elephant'];
+
+// 軍の陣形
+export const FORMATIONS = {
+  gyorin:   { name: '魚鱗', desc: '攻守の均衡がとれた陣。攻撃+5%・防御+5%', atk: 1.05, def: 1.05 },
+  kakuyoku: { name: '鶴翼', desc: '両翼を広げて包み込む。挟撃の効果が大きい（1隊あたり+12%→+20%）・防御-5%', flank: 0.2, def: 0.95 },
+  hoshi:    { name: '鋒矢', desc: '一点突破の攻めの陣。攻撃+15%・防御-10%', atk: 1.15, def: 0.9 },
+  houen:    { name: '方円', desc: '円く固めて守る陣。防御+15%・移動-1', def: 1.15, move: -1 },
+  choda:    { name: '長蛇', desc: '素早く動く縦長の陣。移動+1・防御-5%', move: 1, def: 0.95 },
+};
+
+// 海を渡る経路（EXTRA_LINKS のうち海峡・海路のもの）
+export const SEA_LINKS = [['eng', 'fra'], ['kor', 'kyu'], ['kyu', 'jpw']];
 
 export const SEASON_FARM = [0.6, 1.0, 2.0, 0.4];
 

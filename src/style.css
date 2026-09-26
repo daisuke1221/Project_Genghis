@@ -253,3 +253,10 @@ table.list th.clickable { cursor: pointer; }
 .advice-tag { display: inline-block; font-size: 11px; margin-left: 4px; padding: 0 5px; border-radius: 3px; background: rgba(160,120,220,.18); color: #d8c4ff; white-space: nowrap; cursor: help; }
 .advice-tag.sure, .advice-tag.good { color: #b8f0b0; background: rgba(60,160,60,.18); }
 .advice-tag.hard, .advice-tag.nope { color: #ffb0a0; background: rgba(200,60,40,.18); }
+
+/* 陣形 */
+.formations { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; margin-top: 4px; }
+.fm { display: block; padding: 5px 8px; border: 1px solid var(--gold-dim); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1.4; }
+.fm input { margin-right: 4px; }
+.fm span { display: block; }
+.fm.sel { background: rgba(212,169,74,.18); border-color: var(--gold); }

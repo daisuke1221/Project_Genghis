@@ -3,9 +3,10 @@ import { UNIT_TYPES, PROVINCES } from './data.js';
 import { rnd, rint, chance } from './rng.js';
 import { generalsIn } from './state.js';
 import { roleOf, ensurePersonnel } from './personnel.js';
+import { aiFormation, formationOf, isSeaLink, fatigueOf } from './warfare.js';
 
 const ht = (u, t) => !!u.traits?.includes(t);
-const effWar = (u) => u.war + (ht(u, 'hero') ? 10 : 0);
+const effWar = (u) => u.war + (ht(u, 'hero') ? 10 : 0) + (UNIT_TYPES[u.type]?.duel ?? 0);
 
 export const COLS = 13;
 export const ROWS = 9;
@@ -80,7 +81,8 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
   const mk = (g, side) => (ensurePersonnel(g), {
     id: g.id, gid: g.id, side, nation: g.nation, ally: g.nation !== (side === 'att' ? attNation : defNation), name: g.name, type: g.unit.type,
     soldiers: g.unit.soldiers, start: g.unit.soldiers, training: g.unit.training,
-    morale: Math.min(100, 70 + Math.round(g.cha / 5) + (side === 'def' ? 5 : 0)),
+    morale: Math.min(100, 70 + Math.round(g.cha / 5) + (side === 'def' ? 5 : 0) + (UNIT_TYPES[g.unit.type].morale ?? 0)) - Math.round(fatigueOf(g) / 4),
+    fatigue: fatigueOf(g),
     war: g.war, lead: g.lead, pol: g.pol, cha: g.cha, nomad: nomad(g.nation), ruler: rulerIds.has(g.id),
     c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
     tp: 1 + Math.floor(g.pol / 40) + (g.traits.includes('cunning') ? 1 : 0) + (roleOf(st, g) === 'strategist' ? 1 : 0), hidden: false, confused: 0, commander: false,
@@ -121,6 +123,13 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
     }
     if (lost) b.notes.push(`${why}で攻撃側は${lost}の兵を失った`);
   }
+  // 渡海：荒波で兵を失うことがあり、上陸直後は士気が落ちる
+  if (!field && fromProvince && isSeaLink(fromProvince, provinceId)) {
+    let lost = 0;
+    const storm = rnd(st) < 0.2;
+    for (const u of att) { u.morale -= 10; if (storm) { const l = Math.round(u.soldiers * 0.1); u.soldiers -= l; u.start = u.soldiers; lost += l; } }
+    b.notes.push(storm ? `渡海中に嵐に遭い、攻撃側は${lost}の兵を失った` : '攻撃側は海を渡って上陸したばかりで、隊列が整っていない');
+  }
   deploy(b, att, 'att');
   deploy(b, dfd, 'def');
   b.units = [...att, ...dfd];
@@ -131,6 +140,7 @@ export function createBattle(st, { attNation, attIds, provinceId, fromProvince, 
     const cmd = pool.find((u) => u.ruler) ?? [...pool].sort((x, y) => y.lead - x.lead)[0];
     if (cmd) cmd.commander = true;
   }
+  b.formation = { att: aiFormation(b, 'att'), def: aiFormation(b, 'def') };
   // 伏兵：森に布陣した部隊は敵から見えない
   for (const u of b.units) if (tileOf(b, u.c, u.r).t === 'forest') u.hidden = true;
   // 軍師は伏兵を見破り、大将軍は全軍を奮い立たせる
@@ -219,8 +229,9 @@ function deployCells(b, side) {
 function deploy(b, units, side) {
   const cells = deployCells(b, side);
   // 本丸には歩兵、城郭には弓兵を優先
-  const pr = { inf: 0, arch: 1, siege: 2, harch: 3, cav: 4 };
-  const sorted = side === 'def' ? [...units].sort((a, c) => pr[a.type] - pr[c.type]) : units;
+  const pr = { elephant: 0, inf: 0, arch: 1, siege: 2, harch: 3, cav: 4 };
+  const rk = (u) => pr[UNIT_TYPES[u.type].base ?? u.type] ?? 1;
+  const sorted = side === 'def' ? [...units].sort((a, c) => rk(a) - rk(c)) : units;
   sorted.forEach((u, i) => {
     const [c, r] = cells[i % cells.length];
     u.c = c; u.r = r;
@@ -230,8 +241,8 @@ function deploy(b, units, side) {
 // ---- 移動 ----
 function moveCost(b, u, c, r) {
   const t = tileOf(b, c, r).t;
-  const cav = u.type === 'cav' || u.type === 'harch';
-  if (t === 'forest') return cav ? 3 : 2;
+  const heavy = UNIT_TYPES[u.type].mounted || u.type === 'elephant';
+  if (t === 'forest') return heavy ? 3 : 2;
   if (isCastle(t) && u.side === 'att') return 2 + b.walls;
   return BATTLE_TERRAIN[t].cost;
 }
@@ -241,7 +252,7 @@ function enemyAdjacent(b, side, c, r) {
 
 // 到達可能なマス: Map<key, {c, r, cost, prev}>
 export function reachable(b, u) {
-  const mp = Math.max(1, UNIT_TYPES[u.type].move - (b.weather === 'snow' ? 1 : 0));
+  const mp = Math.max(1, UNIT_TYPES[u.type].move - (b.weather === 'snow' ? 1 : 0) + (formationOf(b, u.side).move ?? 0));
   const res = new Map();
   res.set(hkey(u.c, u.r), { c: u.c, r: u.r, cost: 0, prev: null });
   if (u.moved) return res;
@@ -317,8 +328,8 @@ function power(u) {
   const T = UNIT_TYPES[u.type];
   return u.soldiers * T.atk * (0.6 + u.training / 250) * (0.75 + (u.war * 0.6 + u.lead * 0.4) / 250) * (0.6 + Math.max(0, u.morale) / 250);
 }
-const isMounted = (u) => u.type === 'cav' || u.type === 'harch';
-const isFoot = (u) => u.type === 'inf' || u.type === 'arch';
+const isMounted = (u) => !!UNIT_TYPES[u.type]?.mounted;
+const isFoot = (u) => !!UNIT_TYPES[u.type]?.foot;
 
 // 防御側の倍率と、その内訳（表示用）
 export function defenseFactors(b, u) {
@@ -333,6 +344,8 @@ export function defenseFactors(b, u) {
   if (isMounted(u) && tt === 'forest') { d *= 0.85; f.push(['騎馬は森で守りにくい', 1 / 0.85]); }
   if (u.commander) { d *= 1.1; f.push(['総大将の親衛', 1 / 1.1]); }
   if (ht(u, 'ironwall')) { d *= 1.15; f.push(['鉄壁', 1 / 1.15]); }
+  const F = formationOf(b, u.side);
+  if (F.def && F.def !== 1) { d *= F.def; f.push([`${F.name}の陣`, 1 / F.def]); }
   if (ht(u, 'fortify') && isCastle(tt) && u.side === 'def') { d *= 1.15; f.push(['築城の名手', 1 / 1.15]); }
   return { mul: d, factors: f };
 }
@@ -347,13 +360,22 @@ export function damageFactors(b, a, t, from = [a.c, a.r], movedDist = a.movedDis
   const add = (label, m) => { if (m !== 1) f.push([label, m]); };
   const castleTarget = isCastle(tt) && t.side === 'def';
   const uphill = tt === 'hill' && at !== 'hill';
-  if (!ranged && isMounted(a) && movedDist >= 2) add(uphill || at === 'forest' ? '突撃（坂・森で勢いが削がれる）' : ht(a, 'charge') ? '騎馬の突撃（突撃の名手）' : '騎馬の突撃', uphill || at === 'forest' ? 1.1 : ht(a, 'charge') ? 1.45 : 1.3);
-  if (a.type === 'harch' && ht(a, 'horsearch')) add('騎射の名手', 1.15);
-  if (ranged) add(b.weather === 'rain' ? '雨で弓が湿る' : '射撃', b.weather === 'rain' ? 0.5 : 0.8);
+  const AT = UNIT_TYPES[a.type], TT = UNIT_TYPES[t.type];
+  if (!ranged && isMounted(a) && movedDist >= 2) {
+    const full = (AT.charge ?? 1.3) + (ht(a, 'charge') ? 0.15 : 0);
+    add(uphill || at === 'forest' ? '突撃（坂・森で勢いが削がれる）' : AT.charge ? `${AT.name}の突撃` : ht(a, 'charge') ? '騎馬の突撃（突撃の名手）' : '騎馬の突撃', uphill || at === 'forest' ? 1.1 : full);
+  }
+  if (isMounted(a) && AT.range > 1 && ht(a, 'horsearch')) add('騎射の名手', 1.15);
+  if (ranged) add(b.weather === 'rain' ? (AT.pierce ? '雨（弩は衰えにくい）' : '雨で弓が湿る') : '射撃', b.weather === 'rain' ? (AT.pierce ? 0.75 : 0.5) : 0.8);
+  if (TT.fear && isMounted(a)) add('馬が象に怯える', 0.75);
+  if (AT.fear && isMounted(t)) add('戦象が騎馬を蹴散らす', 1.2);
+  const F = formationOf(b, a.side);
+  if (F.atk) add(`${F.name}の陣`, F.atk);
+  if (a.fatigue >= 20) add('連戦の疲れ', 1 - a.fatigue / 400);
   if (a.hidden) add('伏兵の奇襲', 1.5);
-  if (!ranged && UNIT_TYPES[a.type].range > 1) add('弓兵の白兵戦', 0.6);
+  if (!ranged && AT.range > 1 && !AT.noMeleePenalty) add('弓兵の白兵戦', 0.6);
   if (a.type === 'siege') add(castleTarget ? '攻城兵器で城を攻める' : '攻城兵器の野戦', castleTarget ? 3 : 0.5);
-  else if (ranged && castleTarget) add('城壁越しの射撃', 0.6);
+  else if (ranged && castleTarget && !AT.pierce) add('城壁越しの射撃', 0.6);
   // 高低差
   if (at === 'hill' && tt !== 'hill') add('高所から攻める', ranged ? 1.15 : 1.2);
   else if (!ranged && uphill) add('坂の下から攻め上がる', 0.85);
@@ -369,7 +391,7 @@ export function damageFactors(b, a, t, from = [a.c, a.r], movedDist = a.movedDis
     const x = unitAt(b, c, r);
     return x && x !== a && x.side === a.side;
   }).length;
-  if (flank) add(`挟撃（味方${flank}隊）`, 1 + 0.12 * flank);
+  if (flank) add(`挟撃（味方${flank}隊）${F.flank ? `・${F.name}` : ''}`, 1 + (F.flank ?? 0.12) * flank);
   let mul = 1;
   for (const [, m] of f) mul *= m;
   return { mul, factors: f, ranged };
