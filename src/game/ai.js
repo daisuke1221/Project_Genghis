@@ -18,6 +18,8 @@ import { aiAdmin } from './admin.js';
 import { aiSubvert } from './personnel.js';
 import { aiStrategist } from './strategist.js';
 import { signPact, signTribute, joinSummit } from './statecraft.js';
+import { unitAvailable, aiMercs } from './warfare.js';
+import { enemiesOf } from './diplomacy.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -97,7 +99,8 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   aiSubvert(st, nid, (t, imp) => log(st, t, imp));
   aiStrategist(st, nid);
 
-  // 徴兵
+  // 傭兵・徴兵
+  aiMercs(st, nid, enemiesOf(st, nid).length > 0);
   aiRecruit(st, nid, reserve);
 
   // 侵攻（序盤2ターンは様子見）
@@ -142,6 +145,9 @@ function chooseType(st, nid, g, pid) {
   const culture = CULTURES[st.nations[nid].culture];
   const city = st.provinces[pid].city;
   const horsesOk = city.horses > 600;
+  // 固有兵種：金に余裕があり、条件がそろえば一部の武将に率いさせる
+  const special = Object.keys(UNIT_TYPES).filter((t) => UNIT_TYPES[t].cultures && unitAvailable(st, nid, t, pid).ok && (!UNIT_TYPES[t].horses || horsesOk));
+  if (special.length && st.nations[nid].gold > 1500 && (g.war >= 70 || g.lead >= 75) && chance(st, 0.45)) return special[0];
   if (culture.nomad && horsesOk) return chance(st, 0.55) ? 'harch' : 'cav';
   const y = cityYields(st, pid);
   if (y.hasWorkshop && chance(st, 0.08)) return 'siege';

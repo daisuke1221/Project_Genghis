@@ -5,6 +5,7 @@ import { declareWar, joinWar, refuseCall, atWar, friendsOf, noteConquest } from 
 import { log, PROV_DEF, generalsIn, unitCap } from './state.js';
 import { NEIGHBORS } from './geo.js';
 import { siegeAt, canBesiege, startSiege, assault, relieve, aiChooseSiege } from './siege.js';
+import { marchPaths, isSeaLink, addFatigue } from './warfare.js';
 
 // 参戦要請の処理（プレイヤーへの要請は hooks.callToArms で尋ねる）
 export async function handleCalls(st, calls, hooks = {}) {
@@ -16,12 +17,14 @@ export async function handleCalls(st, calls, hooks = {}) {
 }
 
 // 隣接地方にいる味方（同盟国・宗主・従属国）の援軍。プレイヤーの武将は当事者のときだけ
-export function gatherReinforcements(st, nid, enemy, target, max = 2) {
+// own=true のときは自国の隣接地方からの迎撃（後詰め）も加える
+export function gatherReinforcements(st, nid, enemy, target, max = 2, own = false) {
   const friends = friendsOf(st, nid).filter((f) => atWar(st, f, enemy) && f !== st.playerNation);
+  if (own && nid) friends.push(nid);
   const out = [];
   for (const q of NEIGHBORS[target]) {
     const o = st.provinces[q].owner;
-    if (!friends.includes(o)) continue;
+    if (!friends.includes(o) || st.sieges?.[q]) continue;
     const gens = generalsIn(st, q, o).filter((g) => !g.moved && g.unit?.soldiers >= unitCap(g) * 0.4 && !(g.wound > st.turn));
     if (gens.length < 2) continue; // 自国の守りを空にはしない
     gens.sort((a, b) => b.unit.soldiers - a.unit.soldiers);
@@ -34,6 +37,19 @@ export function gatherReinforcements(st, nid, enemy, target, max = 2) {
 // hooks.captives(captor, gids) -> Promise<{gid: decision}>
 export async function executeMove(st, nid, gids, from, to, hooks = {}) {
   const owner = st.provinces[to].owner;
+  // 遠征：自領を通って数地方先へ。途中の地方まで進んでから最後の1歩を踏み出す
+  let steps = 1;
+  if (!NEIGHBORS[from].includes(to) || (isSeaLink(from, to) && st.season === 3)) {
+    const path = marchPaths(st, nid, from, gids).path(to);
+    if (!path) return { kind: 'invalid', reason: isSeaLink(from, to) ? '冬の海は荒れて渡れません' : 'そこまでは進めません' };
+    steps = path.length - 1;
+    const staging = path[path.length - 2];
+    if (staging !== from) {
+      for (const id of gids) if (st.generals[id]) st.generals[id].province = staging;
+      from = staging;
+    }
+  }
+  for (const id of gids) addFatigue(st.generals[id], 5 * steps);
   const plan = planMove(st, nid, gids, to);
   if (plan.kind === 'invalid') return plan;
   if (plan.kind === 'move') {
@@ -70,7 +86,7 @@ export async function executeMove(st, nid, gids, from, to, hooks = {}) {
     await handleCaptives(st, nid, captives, hooks);
     return { kind: 'occupy', captives };
   }
-  const reinforce = { att: gatherReinforcements(st, nid, owner, to), def: gatherReinforcements(st, owner, nid, to) };
+  const reinforce = { att: gatherReinforcements(st, nid, owner, to), def: gatherReinforcements(st, owner, nid, to, 2, true) };
   const b = createBattle(st, { attNation: nid, attIds: gids, provinceId: to, fromProvince: from, reinforce });
   const result = involved && hooks.battle ? await hooks.battle(b) : autoResolve(b);
   const { msgs, captives } = applyBattle(st, result, gids);

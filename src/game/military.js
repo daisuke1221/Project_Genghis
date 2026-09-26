@@ -27,6 +27,8 @@ export function recruitQuote(st, gid, type, want) {
   if (g.unit && g.unit.soldiers > 0 && g.unit.type !== type) return { ok: false, reason: '兵がいる間は兵種を変えられません', amount: 0 };
   const y = cityYields(st, g.province);
   if (T.needs === 'workshop' && !y.canSiege) return { ok: false, reason: '工房か攻城技師が必要です', amount: 0 };
+  if (T.cultures && !T.cultures.includes(st.nations[g.nation].culture)) return { ok: false, reason: `${T.name}はこの国では編成できません`, amount: 0 };
+  if (T.needs === 'barracks' && !(y.counts.barracks > 0)) return { ok: false, reason: `${T.name}には兵舎が必要です`, amount: 0 };
   const nat = st.nations[g.nation];
   const cur = g.unit?.soldiers ?? 0;
   let amount = Math.min(

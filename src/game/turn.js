@@ -16,6 +16,7 @@ import { diplomacyTick } from './diplomacy.js';
 import { siegeTick, flushCaptives } from './siege.js';
 import { adminTick } from './admin.js';
 import { personnelTick, personnelYear, hasTrait } from './personnel.js';
+import { supplyTick, mercTick, fatigueTick } from './warfare.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -44,6 +45,8 @@ export function seasonTick(st) {
   const income = {};
   tradeTick(st, (t, imp) => log(st, t, imp));
   siegeTick(st);
+  supplyTick(st);
+  mercTick(st);
   for (const p of Object.values(st.provinces)) {
     const c = p.city;
     if (!p.owner) {
@@ -54,6 +57,7 @@ export function seasonTick(st) {
     const nat = st.nations[p.owner];
     const y = cityYields(st, p.id);
     if (st.sieges?.[p.id]) { y.gold = Math.round(y.gold * 0.3); y.food = Math.round(y.food * 0.3); } // 包囲下では収入が途絶える
+    else if (p.cutoff) { y.gold = Math.round(y.gold * 0.5); y.food = Math.round(y.food * 0.5); } // 補給線が断たれると収入が半減
     nat.gold += y.gold;
     nat.food += y.food - y.foodUse;
     income[p.owner] = income[p.owner] || { gold: 0, food: 0 };
@@ -99,6 +103,7 @@ export function seasonTick(st) {
   techTick(st);
   royalTick(st);
   personnelTick(st);
+  fatigueTick(st);
   for (const g of Object.values(st.generals)) g.moved = false;
 }
 

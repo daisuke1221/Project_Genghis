@@ -26,6 +26,8 @@ import {
 import { PROVINCE_TERRAIN, BUILDINGS, BUILD_ORDER, WALLS, CLEAR_FOREST_COST, UNIT_TYPES, SEASONS } from './game/data.js';
 import { cityYields, canBuild, startBuild, buildCost, tileAt, clearForest, demolish, buildingOutput, canBuildWalls, startWalls } from './game/city.js';
 import { moveTargets } from './game/military.js';
+import { marchPaths, isSeaLink, fatigueOf, formationOf, aiFormation } from './game/warfare.js';
+import { FORMATIONS } from './game/data.js';
 import { executeMove } from './game/actions.js';
 import { endTurn } from './game/turn.js';
 import { areNeighbors } from './game/diplomacy.js';
@@ -344,6 +346,7 @@ class App {
         <span>馬</span><span>${fmt(c.horses)}</span>
         ${own ? `<span>季節収入</span><span>金 ${fmt(y.gold)}・食 ${fmt(y.food - y.foodUse)}</span>` : ''}
         <span>太守</span><span>${gov ? gov.name : '―'}</span>
+        ${p.cutoff && p.owner ? '<span>補給</span><span class="neg">補給線が断たれている（収入半減・駐屯兵が消耗）</span>' : ''}
       </div>`;
     if (own) {
       html += `<div class="cmds">
@@ -388,7 +391,7 @@ class App {
       const tr = g.traits.map((t) => TRAITS[t].name).join('・');
       html += `<div class="gen-row"><span>${g.id === nat?.rulerId ? '👑' : ''}${esc(g.name)}${role ? ` <span class="role-tag">${ROLES[role].name}</span>` : ''}${g.moved ? ' <span class="muted">済</span>' : ''}${own && rebelRisk(st, g) > 0 ? ' <span class="neg">不穏</span>' : ''}${showStats && tr ? ` <span class="muted small">${tr}</span>` : ''}</span>
         <span class="muted">${showStats ? `武${g.war} 統${g.lead} 政${g.pol}` : ''}</span></div>
-        <div class="gen-row"><span class="muted">&nbsp;&nbsp;${u && u.soldiers > 0 ? `${UNIT_TYPES[u.type].name} ${fmt(u.soldiers)}（訓練${u.training}）` : '兵なし'}${g.wound > st.turn ? ` <span class="neg">負傷・あと${g.wound - st.turn}季</span>` : ''}</span>${own ? `<span class="muted">忠${g.loyalty}</span>` : ''}</div>`;
+        <div class="gen-row"><span class="muted">&nbsp;&nbsp;${u && u.soldiers > 0 ? `${UNIT_TYPES[u.type].name} ${fmt(u.soldiers)}（訓練${u.training}）` : '兵なし'}${g.wound > st.turn ? ` <span class="neg">負傷・あと${g.wound - st.turn}季</span>` : ''}${fatigueOf(g) >= 20 ? ` <span class="${fatigueOf(g) >= 50 ? 'neg' : 'muted'}">疲労${fatigueOf(g)}</span>` : ''}${g.merc ? ` <span class="muted">傭兵・残り${g.merc.until - st.turn}季</span>` : ''}</span>${own ? `<span class="muted">忠${g.loyalty}</span>` : ''}</div>`;
     }
     html += '</div>';
     side.innerHTML = html;
@@ -427,7 +430,9 @@ class App {
     let extra = '';
     if (this.moveMode) {
       const ok = this.moveMode.targets.includes(pid);
-      extra = ok ? (p.owner === this.st.playerNation ? '<br><span class="pos">クリックで移動</span>' : '<br><span class="neg">クリックで攻撃</span>') : '';
+      const inf = this.moveMode.info?.[pid];
+      const how = inf ? `${inf.dist > 1 ? `（遠征：${inf.dist}地方先）` : ''}${isSeaLink(inf.via, pid) ? '（渡海）' : ''}` : '';
+      extra = ok ? (p.owner === this.st.playerNation ? `<br><span class="pos">クリックで移動${how}</span>` : `<br><span class="neg">クリックで攻撃${how}</span>`) : '';
     }
     tooltip(`<b>${def.city}</b>（${def.region}）<br>${nat ? `<span class="swatch" style="background:${nat.color}"></span>${nat.name}` : '空白地'}${extra}`, e);
   }
@@ -437,9 +442,10 @@ class App {
     if (siegeAt(this.st, pid)) { toast('包囲されていて城から出られません。「出撃」で包囲軍と戦えます'); return; }
     const gids = await D.sortieDialog(this, pid);
     if (!gids?.length) return;
-    const targets = moveTargets(this.st, this.st.playerNation, pid);
+    const mp = marchPaths(this.st, this.st.playerNation, pid, gids);
+    const targets = mp.targets;
     if (!targets.length) { toast('移動できる地方がありません'); return; }
-    this.moveMode = { from: pid, gids, targets };
+    this.moveMode = { from: pid, gids, targets, info: mp.info };
     this.world.setTargets(targets);
     const hint = $('#hint');
     hint.textContent = '移動・攻撃先の地方をクリック（右クリック／Escで取消）';
@@ -501,7 +507,10 @@ class App {
         title: side === 'att' ? `${PROV_DEF[b.provinceId].city}攻め` : `${att}軍が${PROV_DEF[b.provinceId].city}に侵攻！`,
         body: `<div class="grid2"><span>攻撃側</span><span><b>${att}</b> 兵${fmt(sum('att'))}<br><span class="muted">${list('att')}</span></span>
           <span>守備側</span><span><b>${def}</b> 兵${fmt(sum('def'))}<br><span class="muted">${list('def')}</span></span>
-          <span>城壁</span><span>${WALLS[b.walls].name}</span></div>`,
+          <span>城壁</span><span>${WALLS[b.walls].name}</span>
+          <span>敵の陣形</span><span>${strategistOf(st, nid) ? `${FORMATIONS[b.formation[side === 'att' ? 'def' : 'att']].name}<span class="muted">（軍師${esc(strategistOf(st, nid).name)}の物見）</span>` : '<span class="muted">不明（軍師がいれば探れる）</span>'}</span></div>
+          <div class="sect"><b>陣形</b><div class="formations">${Object.entries(FORMATIONS).map(([k, f]) => `<label class="fm ${b.formation[side] === k ? 'sel' : ''}"><input type="radio" name="fm" value="${k}" ${b.formation[side] === k ? 'checked' : ''}><b>${f.name}</b><span class="muted">${f.desc}</span></label>`).join('')}</div></div>`,
+        onMount: ({ el }) => { el.onchange = (e) => { if (e.target.name === 'fm') { b.formation[side] = e.target.value; el.querySelectorAll('.fm').forEach((x) => x.classList.toggle('sel', x.querySelector('input').checked)); } }; },
         buttons: [{ label: '自動で戦う', value: 'auto' }, { label: '自ら指揮する', value: 'command', primary: true }],
         closeValue: 'auto',
       });

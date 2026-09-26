@@ -350,7 +350,34 @@ export function person(color = 0x8b5a2b) {
   return g;
 }
 
+// 固有兵種は基本の兵種の姿に装飾を加える
+const SPECIAL_BASE = { keshig: 'cav', knight: 'cav', mamluk: 'harch', samurai: 'harch', crossbow: 'arch' };
 export function soldier(type, color) {
+  if (type === 'elephant') return elephant(color);
+  if (SPECIAL_BASE[type]) {
+    const g = soldier(SPECIAL_BASE[type], color);
+    const top = 0.28 + 0.36;
+    if (type === 'knight') {
+      g.add(box(0xb0b4bc, 0.2, 0.12, 0.46, 0, 0.14, 0));       // 馬鎧
+      g.add(box(0xc8ccd4, 0.13, 0.12, 0.13, 0, top - 0.02, 0)); // 兜
+      g.add(box(color, 0.04, 0.12, 0.02, 0, top + 0.1, 0));    // 羽飾り
+    } else if (type === 'keshig') {
+      g.add(box(0x8a1c1c, 0.18, 0.1, 0.14, 0, 0.3, 0));         // 札甲
+      const pole = box(0x5a3a1a, 0.015, 0.7, 0.015, -0.1, 0.3, -0.05);
+      g.add(pole);
+      g.add(box(0xf0f0f0, 0.02, 0.18, 0.12, -0.1, 0.82, 0.02)); // 白い纛（トゥグ）
+    } else if (type === 'mamluk') {
+      g.add(sphere(0xf2efe6, 0.075, 0, top - 0.01, 0, 6));      // ターバン
+      g.add(box(0x9aa0a8, 0.18, 0.08, 0.14, 0, 0.36, 0));
+    } else if (type === 'samurai') {
+      g.add(box(0xa0281e, 0.19, 0.14, 0.15, 0, 0.3, 0));        // 赤備えの大鎧
+      g.add(box(0xd4a94a, 0.14, 0.03, 0.02, 0, top + 0.05, 0.05)); // 鍬形
+    } else if (type === 'crossbow') {
+      g.add(box(0x5a3a1a, 0.26, 0.03, 0.03, 0.1, 0.22, 0.12));   // 弩
+      g.add(box(0x5a3a1a, 0.03, 0.03, 0.2, 0.1, 0.22, 0.05));
+    }
+    return g;
+  }
   const g = new THREE.Group();
   const mounted = type === 'cav' || type === 'harch';
   let y = 0;
@@ -384,6 +411,21 @@ export function soldier(type, color) {
       g.add(w);
     }
   }
+  return g;
+}
+
+function elephant(color) {
+  const g = new THREE.Group();
+  g.add(box(0x8a8a8a, 0.3, 0.3, 0.55, 0, 0.26, 0));                 // 胴
+  for (const [x, z] of [[-0.1, -0.18], [0.1, -0.18], [-0.1, 0.18], [0.1, 0.18]]) g.add(box(0x7a7a7a, 0.09, 0.26, 0.09, x, 0, z));
+  g.add(box(0x8a8a8a, 0.22, 0.22, 0.18, 0, 0.36, 0.34));            // 頭
+  const trunk = box(0x7a7a7a, 0.06, 0.26, 0.06, 0, 0.12, 0.44);
+  g.add(trunk);
+  g.add(box(0xf2efe6, 0.03, 0.03, 0.14, -0.07, 0.3, 0.46));          // 牙
+  g.add(box(0xf2efe6, 0.03, 0.03, 0.14, 0.07, 0.3, 0.46));
+  g.add(box(color, 0.26, 0.12, 0.26, 0, 0.56, -0.04));              // 輿（ハウダー）
+  g.add(sphere(0xe0b890, 0.05, 0, 0.74, -0.04, 6));
+  g.scale.setScalar(1.25);
   return g;
 }
 
