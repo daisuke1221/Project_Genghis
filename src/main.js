@@ -50,6 +50,7 @@ class App {
       captives: (captor, gids) => D.captivesDialog(this, gids),
       proposal: (pr) => D.proposalDialog(this, pr),
       progress: (name) => busy(`${name}の行動中…`),
+      event: (payload) => D.eventDialog(this, payload),
     };
     document.addEventListener('keydown', (e) => this.onKey(e));
     this.showTitle();

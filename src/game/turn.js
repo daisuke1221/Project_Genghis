@@ -11,6 +11,7 @@ import { killGeneral } from './military.js';
 import { tradeTick } from './trade.js';
 import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
+import { runEvents } from './events.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -26,6 +27,10 @@ export async function endTurn(st, hooks = {}) {
   seasonTick(st);
   advanceTime(st);
   checkGameOver(st);
+  if (!st.over) {
+    await runEvents(st, hooks);
+    checkGameOver(st);
+  }
   return st;
 }
 
