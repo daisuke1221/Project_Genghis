@@ -1,14 +1,15 @@
 // 各種ダイアログ：徴兵・出陣・人事・交易・外交・勢力一覧・記録・設定・遊び方・捕虜・提案
 import { modal, esc, fmt, toast, statBar, busy } from './ui.js';
 import { audio } from '../audio/audio.js';
-import { UNIT_TYPES, UNIT_ORDER, PROVINCES, VICTORY_SHARE } from '../game/data.js';
+import { UNIT_TYPES, UNIT_ORDER, PROVINCES, VICTORY_SHARE, WALLS } from '../game/data.js';
 import {
-  PROV_DEF, generalsIn, roninIn, unitCap, nationProvinces, nationGenerals, nationSoldiers, ruler, treaty, relation, age,
+  PROV_DEF, generalsIn, roninIn, unitCap, nationProvinces, nationGenerals, nationSoldiers, ruler, treaty, relation, age, unitPower,
 } from '../game/state.js';
 import { recruitQuote, recruit, dismiss, recruitLimit, hireChance, tryHire, reward, recruitChance, searchTalent, SEARCH_COST } from '../game/military.js';
 import { nationPower, gift, propose, breakTreaty, acceptChance } from '../game/diplomacy.js';
 import { cityYields } from '../game/city.js';
 import { portrait } from './portrait.js';
+import { defenders, initialSupply, siegeAt } from '../game/siege.js';
 
 const SAVE_PREFIX = 'steppe-khan.save.';
 
@@ -74,7 +75,8 @@ export function sortieDialog(app, pid) {
   const st = app.st, nid = st.playerNation;
   const gens = generalsIn(st, pid, nid).filter((g) => !g.moved);
   if (!gens.length) { toast('この季節に動ける武将がいません'); return Promise.resolve(null); }
-  const picked = new Set(gens.filter((g) => g.unit?.soldiers > 0).map((g) => g.id));
+  const hurt = (g) => g.wound && g.wound > st.turn;
+  const picked = new Set(gens.filter((g) => g.unit?.soldiers > 0 && !hurt(g)).map((g) => g.id));
   return modal({
     title: `${PROV_DEF[pid].city}から出陣`,
     body: (el) => {
@@ -82,10 +84,13 @@ export function sortieDialog(app, pid) {
         const total = [...picked].reduce((s, id) => s + (st.generals[id].unit?.soldiers ?? 0), 0);
         el.innerHTML = `<p class="muted">出陣させる武将を選んでください。敵地へ攻め込むと合戦になります。自領へは移動だけです。<br>武将を全員出すと城の守りが空になるので注意。</p>
           <table class="list"><tr><th></th><th>武将</th><th>武</th><th>統</th><th>兵種</th><th>兵数</th><th>訓練</th></tr>
-          ${gens.map((g) => `<tr class="clickable ${picked.has(g.id) ? 'sel' : ''}" data-g="${g.id}"><td><input type="checkbox" ${picked.has(g.id) ? 'checked' : ''}></td>
+          ${gens.map((g) => hurt(g)
+            ? `<tr class="muted"><td></td><td>${esc(g.name)} <span class="neg">負傷（あと${g.wound - st.turn}季）</span></td><td>${g.war}</td><td>${g.lead}</td><td colspan="3">出陣できない</td></tr>`
+            : `<tr class="clickable ${picked.has(g.id) ? 'sel' : ''}" data-g="${g.id}"><td><input type="checkbox" ${picked.has(g.id) ? 'checked' : ''}></td>
             <td>${esc(g.name)}${st.nations[nid].rulerId === g.id ? '（君主）' : ''}</td><td>${g.war}</td><td>${g.lead}</td>
             <td>${g.unit?.soldiers > 0 ? UNIT_TYPES[g.unit.type].name : '―'}</td><td>${fmt(g.unit?.soldiers ?? 0)}</td><td>${g.unit?.training ?? '-'}</td></tr>`).join('')}</table>
-          <p>選択：${picked.size}人・兵 <b>${fmt(total)}</b></p>`;
+          <p>選択：${picked.size}人・兵 <b>${fmt(total)}</b></p>
+          ${picked.has(st.nations[nid].rulerId) && !st.options.protectRuler ? '<p class="neg">⚠ 君主が出陣します。部隊が敗走すると討死・負傷・捕虜のおそれがあります（設定で君主の討死を防ぐこともできます）。</p>' : ''}`;
       };
       el.onclick = (e) => {
         const row = e.target.closest('[data-g]');
@@ -226,6 +231,7 @@ export function settingsDialog(app) {
         <span>音楽</span><input type="range" min="0" max="1" step="0.05" value="${audio.musicVol}" data-k="m">
         <span>効果音</span><input type="range" min="0" max="1" step="0.05" value="${audio.sfxVol}" data-k="s">
         ${app.st ? `<span>合戦</span><label><input type="checkbox" data-k="auto" ${auto ? 'checked' : ''}> 常に自動で戦う（確認しない）</label>` : ''}
+        ${app.st ? `<span>君主の保護</span><label><input type="checkbox" data-k="protect" ${app.st.options.protectRuler ? 'checked' : ''}> 自分の君主は合戦で討死しない（負傷にとどまる）</label>` : ''}
         ${app.st ? `<span>史実イベント</span><label><input type="checkbox" data-k="hist" ${app.st.options.historyEvents !== false ? 'checked' : ''}> 起こる（奥州合戦・十字軍・オトラル事件など）</label>` : ''}
       </div>`;
       el.oninput = (e) => {
@@ -237,6 +243,7 @@ export function settingsDialog(app) {
         }
         if (k === 'auto') app.st.options.autoBattle = e.target.checked;
         if (k === 'hist') app.st.options.historyEvents = e.target.checked;
+        if (k === 'protect') app.st.options.protectRuler = e.target.checked;
       };
     },
   });
@@ -249,6 +256,12 @@ export function helpDialog() {
     width: '720px',
     body: `<div class="help">
       <p>12世紀末のユーラシア。35の勢力が割拠する中から一つを選び、内政と合戦で領土を広げ、全${PROVINCES.length}地方の${Math.round(VICTORY_SHARE * 100)}%（${Math.ceil(PROVINCES.length * VICTORY_SHARE)}地方）を支配すれば勝利です。1ターンは1季節（春夏秋冬）。</p>
+      <h3>籠城戦・天候・計略</h3>
+      <ul><li>城壁のある都市を攻めるときは「強襲」か「包囲」を選べます。包囲すると毎季城壁を削り、城内の兵糧（城壁と農地の数で決まる）が尽きれば開城します。守備側は「出撃」、隣の自領からは「後詰め」で包囲を破れます。包囲軍は兵站のため兵糧を倍消費し、冬は寒さで消耗します。</li>
+      <li>合戦には天候があります（雨：弓と火計が弱い／雪：移動力-1・士気低下／霧：射程-1／酷暑：攻撃側の士気低下）。冬の遠征では遊牧民以外が凍傷で兵を失います。</li>
+      <li>地形：森・丘・城は守りに有利、川は不利。丘の上から攻めると+20%、坂の下からは-15%。川の中からの攻撃は-30%、渡河直後は-15%。草原では騎馬の攻撃+15%、森では騎馬の白兵-25%、山岳・森林の地方では歩兵が強い。山岳へ攻め込むと行軍で兵を失い、夏の砂漠は砂漠に慣れない軍を消耗させる。合戦中に敵へカーソルを合わせると、補正の内訳が表示されます。</li>
+      <li>部隊が敗走すると、武将は討死・負傷（2〜4季出陣できない）・無事のいずれかになります。武力が高いほど生き延びやすく、設定で自分の君主の討死を防ぐこともできます。武力70以上の武将は隣接する敵将に一騎討ちを挑めます（3本先取。敗者は討死・負傷・逃走）。</li>
+      <li>各軍の総大将（★）が敗走すると全軍の士気が大きく下がります。政治力の高い武将は計略（火計・偽報・鼓舞）を使えます。森に布陣した部隊は伏兵となり、敵から見えず、奇襲で大きな損害を与えます。</li></ul>
       <h3>史実イベント</h3>
       <ul><li>条件がそろうと、奥州合戦・第3回十字軍・クリルタイ・オトラル事件などの史実の出来事が起こります。自勢力が当事者なら選択肢から対応を選べ、他勢力は史実どおりに動きます。起きた出来事は「勢力」→「年表」で振り返れます。設定でオフにもできます。</li></ul>
       <h3>外交</h3>
@@ -355,7 +368,7 @@ export async function proposalDialog(app, pr) {
 export function battleSummaryHtml(st, b, side) {
   const reason = { annihilated: '一方の軍が壊滅した', keep: '本丸が占拠された', timeout: '攻撃側が攻めきれず撤退した', retreat: '退却した' }[b.reason] ?? '';
   return `<p>${reason}。</p><table class="list"><tr><th></th><th>武将</th><th>兵数</th><th></th></tr>
-    ${b.units.map((u) => `<tr><td>${u.side === side ? '自' : '敵'}</td><td>${esc(u.name)}</td><td>${fmt(u.start)} → ${fmt(u.soldiers)}</td><td>${u.dead ? '<span class="neg">討死</span>' : u.routed ? '敗走' : ''}</td></tr>`).join('')}</table>`;
+    ${b.units.map((u) => `<tr><td>${u.side === side ? '自' : '敵'}</td><td>${esc(u.name)}</td><td>${fmt(u.start)} → ${fmt(u.soldiers)}</td><td>${u.dead ? '<span class="neg">討死</span>' : u.wounded ? '<span class="neg">負傷</span>' : u.routed ? '敗走' : ''}</td></tr>`).join('')}</table>`;
 }
 
 // ---------- 歴史イベント ----------
@@ -382,4 +395,37 @@ export async function eventDialog(app, { ev, title, text, choices, date, involve
   });
   if (app.turnBusy) busy('他勢力の行動中…');
   return idx;
+}
+
+// ---------- 城攻めの方針 ----------
+export async function attackModeDialog(app, { gids, to, existing }) {
+  busy(null);
+  const st = app.st;
+  const c = st.provinces[to].city;
+  const defs = defenders(st, to);
+  const dp = defs.reduce((a, g) => a + unitPower(g), 0);
+  const ap = gids.map((id) => st.generals[id]).reduce((a, g) => a + unitPower(g), 0);
+  const dSol = defs.reduce((a, g) => a + g.unit.soldiers, 0);
+  const aSol = gids.reduce((a, id) => a + (st.generals[id].unit?.soldiers ?? 0), 0);
+  const sg = siegeAt(st, to);
+  const supply = sg ? sg.supply : initialSupply(st, to);
+  const ratio = ap / Math.max(1, dp * (1 + 0.3 * c.walls));
+  const winter = st.season === 3;
+  const v = await modal({
+    title: `${PROV_DEF[to].city}攻め — 方針を決める`,
+    body: `<div class="grid2">
+        <span>味方</span><span>${fmt(aSol)}${existing ? '（包囲中の軍に合流）' : ''}</span>
+        <span>城兵</span><span>${fmt(dSol)}（${defs.length}将）</span>
+        <span>城壁</span><span>${WALLS[c.walls].name}</span>
+        <span>城内の兵糧</span><span>${supply >= 0 ? `約${supply}季分` : '尽きている'}</span>
+        <span>見込み</span><span>${ratio >= 1.5 ? '<span class="pos">強襲でも勝てそう</span>' : ratio >= 0.9 ? '強襲は五分五分' : '<span class="neg">強襲は厳しい</span>'}</span></div>
+      <table class="list" style="margin-top:8px">
+        <tr><td><b>強襲</b></td><td class="muted">すぐに城攻めの合戦を行う。城兵は城壁の分だけ守りが堅い。</td></tr>
+        <tr><td><b>包囲</b></td><td class="muted">城を囲んで兵糧攻めにする。毎季、城壁を削り、兵糧が尽きれば開城する。包囲軍は兵站のため兵糧を倍消費し${winter ? '、<span class="neg">冬は寒さで大きく消耗する</span>' : '、冬は消耗が大きい'}。敵の後詰めや出撃に注意。</td></tr>
+      </table>`,
+    buttons: [{ label: 'やめる', value: 'cancel' }, { label: '包囲する', value: 'siege' }, { label: '強襲する', value: 'assault', primary: true }],
+    closeValue: 'cancel',
+  });
+  if (app.turnBusy) busy('他勢力の行動中…');
+  return v;
 }
