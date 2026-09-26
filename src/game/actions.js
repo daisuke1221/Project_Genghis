@@ -4,6 +4,7 @@ import { createBattle, autoResolve } from './battle.js';
 import { declareWar, joinWar, refuseCall, atWar, friendsOf, noteConquest } from './diplomacy.js';
 import { log, PROV_DEF, generalsIn, unitCap } from './state.js';
 import { NEIGHBORS } from './geo.js';
+import { siegeAt, canBesiege, startSiege, assault, relieve, aiChooseSiege } from './siege.js';
 
 // 参戦要請の処理（プレイヤーへの要請は hooks.callToArms で尋ねる）
 export async function handleCalls(st, calls, hooks = {}) {
@@ -35,9 +36,33 @@ export async function executeMove(st, nid, gids, from, to, hooks = {}) {
   const owner = st.provinces[to].owner;
   const plan = planMove(st, nid, gids, to);
   if (plan.kind === 'invalid') return plan;
-  if (plan.kind === 'move') { moveGenerals(st, gids, to); return plan; }
+  if (plan.kind === 'move') {
+    // 包囲されている自領への移動は後詰めの合戦になる
+    const sg = siegeAt(st, to);
+    if (sg && owner === nid && gids.some((id) => st.generals[id]?.unit?.soldiers > 0)) {
+      const r = await relieve(st, nid, gids, from, to, hooks);
+      return { kind: 'relief', ...r };
+    }
+    moveGenerals(st, gids, to);
+    return plan;
+  }
   if (owner && !atWar(st, nid, owner)) await handleCalls(st, declareWar(st, nid, owner), hooks);
   const involved = nid === st.playerNation || owner === st.playerNation;
+  // 城壁のある都市：強襲か包囲かを選ぶ
+  if (plan.kind === 'battle' && canBesiege(st, nid, to)) {
+    const existing = siegeAt(st, to);
+    if (existing && existing.att !== nid) return { kind: 'invalid', reason: '他の勢力が包囲中です' };
+    const mode = nid === st.playerNation && hooks.attackMode
+      ? await hooks.attackMode({ nid, gids, to, from, existing: !!existing })
+      : aiChooseSiege(st, nid, [...gids, ...(existing?.gids ?? [])], to);
+    if (mode === 'cancel') return { kind: 'cancel' };
+    startSiege(st, nid, gids, to, from);
+    if (mode === 'siege') return { kind: 'siege' };
+    for (const id of gids) if (st.generals[id]) st.generals[id].moved = false;
+    const r = await assault(st, to, hooks);
+    for (const id of gids) if (st.generals[id]) st.generals[id].moved = true;
+    return { kind: 'battle', result: r.result, fell: r.fell };
+  }
   if (plan.kind === 'occupy') {
     const captives = occupy(st, nid, gids, to, from);
     if (owner) noteConquest(st, nid, owner);

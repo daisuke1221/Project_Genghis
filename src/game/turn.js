@@ -13,6 +13,7 @@ import { techTick } from './tech.js';
 import { royalTick } from './royal.js';
 import { runEvents } from './events.js';
 import { diplomacyTick } from './diplomacy.js';
+import { siegeTick, flushCaptives } from './siege.js';
 
 export async function endTurn(st, hooks = {}) {
   const player = st.playerNation;
@@ -26,6 +27,7 @@ export async function endTurn(st, hooks = {}) {
   }
   if (st.nations[player].alive) delegateDevelop(st, player);
   seasonTick(st);
+  await flushCaptives(st, hooks);
   advanceTime(st);
   checkGameOver(st);
   if (!st.over) {
@@ -39,6 +41,7 @@ export function seasonTick(st) {
   const player = st.playerNation;
   const income = {};
   tradeTick(st, (t, imp) => log(st, t, imp));
+  siegeTick(st);
   for (const p of Object.values(st.provinces)) {
     const c = p.city;
     if (!p.owner) {
@@ -48,6 +51,7 @@ export function seasonTick(st) {
     }
     const nat = st.nations[p.owner];
     const y = cityYields(st, p.id);
+    if (st.sieges?.[p.id]) { y.gold = Math.round(y.gold * 0.3); y.food = Math.round(y.food * 0.3); } // 包囲下では収入が途絶える
     nat.gold += y.gold;
     nat.food += y.food - y.foodUse;
     income[p.owner] = income[p.owner] || { gold: 0, food: 0 };

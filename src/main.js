@@ -10,6 +10,7 @@ import * as D from './ui/dialogs.js';
 import * as X from './ui/extraDialogs.js';
 import { diplomacyDialog, callToArmsDialog } from './ui/diplomacyDialog.js';
 import { atWar, friendsOf, treatyLabel } from './game/diplomacy.js';
+import { siegeAt, siegeInfo, assault, sally, liftSiege } from './game/siege.js';
 import { techsIn } from './game/tech.js';
 import { routesFrom } from './game/trade.js';
 import { TECH_TYPES } from './game/data.js';
@@ -54,6 +55,7 @@ class App {
       progress: (name) => busy(`${name}の行動中…`),
       event: (payload) => D.eventDialog(this, payload),
       callToArms: (call) => callToArmsDialog(this, call),
+      attackMode: (info) => D.attackModeDialog(this, info),
     };
     document.addEventListener('keydown', (e) => this.onKey(e));
     this.showTitle();
@@ -339,6 +341,20 @@ class App {
     } else {
       html += `<div class="cmds"><button class="btn" data-a="city">箱庭を見る</button>${p.owner ? '<button class="btn" data-a="diplo">外交</button>' : ''}</div>`;
     }
+    const si = siegeInfo(st, pid);
+    if (si) {
+      const attName = st.nations[si.att].name;
+      const mineAtt = si.att === st.playerNation;
+      const bs = si.besiegers.reduce((a, g) => a + g.unit.soldiers, 0);
+      html += `<div class="sect siege-box"><b>⚔ 包囲中</b>：${attName}軍 ${fmt(bs)}（${si.besiegers.map((g) => esc(g.name)).join('、')}）
+        <div class="grid2"><span>包囲開始</span><span>${st.turn - si.since}季前</span>
+        <span>城内の兵糧</span><span>${si.supply >= 0 ? `残り${si.supply}季` : '<span class="neg">尽きている（飢餓）</span>'}</span>
+        <span>城壁</span><span>${WALLS[si.walls].name}${si.walls ? ` ${statBar(si.wallHp, si.wallMax, '#b8b0a0')}<span class="muted">毎季 -${si.damage}</span>` : ''}</span></div>
+        <div class="row" style="margin-top:6px">
+        ${mineAtt ? `<button class="btn small primary" data-a="assault" ${si.besiegers.some((g) => !g.moved) ? '' : 'disabled'}>総攻撃</button><button class="btn small" data-a="liftsiege">包囲を解く</button>` : ''}
+        ${own ? `<button class="btn small primary" data-a="sally" ${gens.some((g) => !g.moved && g.unit?.soldiers > 0) ? '' : 'disabled'}>出撃する</button><span class="muted">隣の自領から救援（後詰め）も送れます</span>` : ''}
+        </div><div class="muted">兵糧が尽きると城兵は飢え、2季後に開城します。攻城兵は城壁を大きく削ります。冬の包囲は包囲軍の消耗が激しくなります。</div></div>`;
+    }
     html += `<div class="sect"><b>武将</b> <span class="muted">${gens.length}人</span>`;
     const showStats = own || gens.length <= 6;
     for (const g of gens) {
@@ -361,6 +377,9 @@ class App {
       if (a === 'tech') { await X.techDialog(this, pid); this.refresh(); }
       if (a === 'delegate') { p.delegated = !p.delegated; toast(p.delegated ? `${def.city}の内政を委任しました（毎季、自動で建設します）` : `${def.city}の委任を解除しました`); this.refresh(); }
       if (a === 'diplo') { await diplomacyDialog(this, p.owner); this.refresh(); }
+      if (a === 'assault') { audio.sfx('horn'); const r = await assault(this.st, pid, this.hooks); if (r.reason) toast(r.reason); else toast(r.fell ? `${def.city}を攻め落とした！` : '総攻撃は失敗した…'); this.checkOver(); this.refresh(); }
+      if (a === 'sally') { audio.sfx('horn'); const r = await sally(this.st, pid, this.hooks); if (r.reason) toast(r.reason); else toast(r.result.winner === 'att' ? '出撃して包囲軍を打ち破った！' : '出撃は押し返された…'); this.refresh(); }
+      if (a === 'liftsiege') { if (await confirmBox('包囲を解く', `${def.city}の包囲を解いて撤退しますか？`)) { liftSiege(this.st, pid, '（撤退）'); this.refresh(); } }
     };
   }
 
@@ -385,6 +404,7 @@ class App {
 
   // ================= 出陣 =================
   async startSortie(pid) {
+    if (siegeAt(this.st, pid)) { toast('包囲されていて城から出られません。「出撃」で包囲軍と戦えます'); return; }
     const gids = await D.sortieDialog(this, pid);
     if (!gids?.length) return;
     const targets = moveTargets(this.st, this.st.playerNation, pid);
@@ -408,6 +428,11 @@ class App {
     const st = this.st, nid = st.playerNation;
     const owner = st.provinces[pid].owner;
     this.cancelMove();
+    if (owner === nid && siegeAt(st, pid)) {
+      const sg = siegeAt(st, pid);
+      if (!(await confirmBox('後詰め', `${PROV_DEF[pid].city}を包囲している${st.nations[sg.att].name}軍と野戦で戦います。城の守備兵も加わります。`, '救援に向かう', 'やめる'))) return;
+      audio.sfx('horn');
+    }
     if (owner !== nid) {
       const tr = owner ? treaty(st, nid, owner) : null;
       const name = owner ? st.nations[owner].name : '空白地';
@@ -421,6 +446,8 @@ class App {
     }
     const res = await executeMove(st, nid, mm.gids, mm.from, pid, this.hooks);
     if (res.kind === 'invalid') toast(res.reason);
+    if (res.kind === 'siege') toast(`${PROV_DEF[pid].city}の包囲を始めた。兵糧が尽きるのを待つか、総攻撃をかけよう`);
+    if (res.kind === 'relief') toast(res.result?.winner === 'att' ? `${PROV_DEF[pid].city}の包囲を打ち破った！` : '後詰めは失敗した…');
     if (res.kind === 'occupy') { toast(`${PROV_DEF[pid].city}を占領した！`); audio.jingle('win'); }
     if (res.kind === 'move') toast(`${PROV_DEF[pid].city}へ移動しました`);
     this.checkOver();

@@ -13,6 +13,7 @@ import { aiDiplomacy, sign, atWar, applyPeace, declareWar } from './diplomacy.js
 import { aiHireTech } from './tech.js';
 import { aiTrade } from './trade.js';
 import { becomeConsort } from './royal.js';
+import { aiSieges } from './siege.js';
 
 export async function aiNationTurn(st, nid, hooks = {}) {
   const nat = st.nations[nid];
@@ -76,6 +77,8 @@ export async function aiNationTurn(st, nid, hooks = {}) {
   aiRecruit(st, nid, reserve);
 
   // 侵攻（序盤2ターンは様子見）
+  await aiSieges(st, nid, hooks);
+  if (!nat.alive) return;
   if (st.turn > 3) await aiAttack(st, nid, hooks);
   if (!nat.alive) return;
 
@@ -89,11 +92,12 @@ function aiRegroup(st, nid) {
   const room = {};
   for (const pid of own) room[pid] = recruitLimit(st, pid) - generalsIn(st, pid, nid).reduce((s, g) => s + Math.max(0, unitCap(g) - (g.unit?.soldiers ?? 0)), 0);
   for (const pid of own) {
+    if (st.sieges?.[pid]) continue;
     for (const g of generalsIn(st, pid, nid)) {
       if (g.moved || g.id === st.provinces[pid].governorId) continue;
       if ((g.unit?.soldiers ?? 0) >= unitCap(g) * 0.4) continue;
       if (room[pid] > 0) continue;
-      const best = NEIGHBORS[pid].filter((q) => own.has(q)).sort((a, b) => room[b] - room[a])[0];
+      const best = NEIGHBORS[pid].filter((q) => own.has(q) && !st.sieges?.[q]).sort((a, b) => room[b] - room[a])[0];
       if (best && room[best] > room[pid] + 300) {
         g.province = best; g.moved = true;
         const need = unitCap(g) - (g.unit?.soldiers ?? 0);
@@ -164,6 +168,7 @@ async function aiAttack(st, nid, hooks) {
     const sources = NEIGHBORS[to].filter((q) => st.provinces[q].owner === nid);
     const pool = [];
     for (const src of sources) {
+      if (st.sieges?.[src]) continue; // 包囲されている城からは出られない
       const gens = generalsIn(st, src, nid).filter((g) => !g.moved && g.unit?.soldiers > 0).sort((a, b) => unitPower(b) - unitPower(a));
       const keep = threatOf(src) > 0 && gens.length > 1 ? 1 : 0; // 脅威があれば最弱の1人を守備に残す
       for (const g of gens.slice(0, gens.length - keep)) pool.push({ g, src });
@@ -212,9 +217,9 @@ function aiReinforce(st, nid) {
     for (const b of NEIGHBORS[a]) if (own.has(b) && dist[b] === undefined) { dist[b] = dist[a] + 1; q.push(b); }
   }
   for (const p of provs) {
-    if (!dist[p.id]) continue;
+    if (!dist[p.id] || st.sieges?.[p.id]) continue;
     const gens = generalsIn(st, p.id, nid).filter((g) => !g.moved && g.id !== p.governorId && g.unit?.soldiers >= unitCap(g) * 0.6);
-    const next = NEIGHBORS[p.id].filter((b) => own.has(b) && dist[b] === dist[p.id] - 1);
+    const next = NEIGHBORS[p.id].filter((b) => own.has(b) && dist[b] === dist[p.id] - 1 && !st.sieges?.[b]);
     if (!next.length) continue;
     for (const g of gens) {
       if (!chance(st, 0.7)) continue;

@@ -218,10 +218,37 @@ export class WorldView {
         this.scene.add(mk.group);
       }
       const gens = owner ? generalsIn(st, p.id, owner).length : 0;
+      const sg = st.sieges?.[p.id];
       mk.label.innerHTML = `<div class="nm"><span class="dot" style="background:${color}"></span>${p.city}</div>` +
-        (owner ? `<div class="troops">兵 ${soldiers.toLocaleString()}${gens ? `・将${gens}` : ''}</div>` : '<div class="troops">空白地</div>');
+        (owner ? `<div class="troops">兵 ${soldiers.toLocaleString()}${gens ? `・将${gens}` : ''}</div>` : '<div class="troops">空白地</div>') +
+        (sg ? `<div class="siege-tag" style="border-color:${st.nations[sg.att]?.color}">⚔ ${st.nations[sg.att]?.name ?? ''}が包囲中</div>` : '');
+      this.setSiegeRing(p.id, sg ? st.nations[sg.att]?.color : null);
       mk.label.className = `city-label${isCap ? ' capital' : ''}`;
     }
+  }
+
+  // 包囲している軍の天幕の輪
+  setSiegeRing(pid, color) {
+    this.siegeRings = this.siegeRings || {};
+    const cur = this.siegeRings[pid];
+    if (cur && cur.color === color) return;
+    if (cur) { M.disposeGroup(cur.group); delete this.siegeRings[pid]; }
+    if (!color) return;
+    const { x, z } = PROV_POS[pid];
+    const y = Math.max(0.05, heightAt(x, z));
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    const c = new THREE.Color(color).getHex();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const tent = M.cone(i % 2 ? c : 0xe8dcc0, 0.22, 0.4, Math.cos(a) * 1.9, 0, Math.sin(a) * 1.9, 5);
+      g.add(tent);
+    }
+    const fl = M.flag(c, 1.2);
+    fl.position.set(1.9, 0, 0);
+    g.add(fl);
+    this.scene.add(g);
+    this.siegeRings[pid] = { group: g, color };
   }
 
   makeMarker(p, style, color, isCap, walls, soldiers) {

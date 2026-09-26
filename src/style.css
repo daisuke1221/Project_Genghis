@@ -203,3 +203,12 @@ input[type=range] { accent-color: var(--gold); }
 .dip-note { background: rgba(212,169,74,.12); border: 1px solid var(--gold-dim); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; }
 .terms { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; font-size: 13px; }
 @media (max-width: 800px) { .dip-wrap { grid-template-columns: 1fr; } }
+
+/* ---------- 籠城・合戦 ---------- */
+.siege-tag { font-size: 11px; color: #ffd0c0; background: rgba(120,20,10,.75); border: 1px solid; border-radius: 3px; padding: 0 4px; margin-top: 2px; }
+.siege-box { background: rgba(120,30,20,.25); border: 1px solid rgba(211,90,74,.6); border-radius: 4px; padding: 8px; }
+.weather-tag { font-size: 13px; color: #cfe6ff; }
+.tactic-bar { display: flex; gap: 6px; align-items: center; }
+.tactic-bar .btn.small { font-size: 12px; }
+.unit-label .cmd { color: #ffd76a; }
+.unit-label .hid { color: #9fe09f; }

@@ -20,6 +20,7 @@ export function recruitQuote(st, gid, type, want) {
   const g = st.generals[gid];
   const p = st.provinces[g.province];
   if (!p || p.owner !== g.nation) return { ok: false, reason: '自領にいません', amount: 0 };
+  if (st.sieges?.[g.province]) return { ok: false, reason: '包囲されていて徴兵できません', amount: 0 };
   const T = UNIT_TYPES[type];
   if (g.unit && g.unit.soldiers > 0 && g.unit.type !== type) return { ok: false, reason: '兵がいる間は兵種を変えられません', amount: 0 };
   const y = cityYields(st, g.province);
@@ -140,6 +141,11 @@ export function changeOwner(st, pid, nid) {
   const p = st.provinces[pid];
   const prev = p.owner;
   p.owner = nid;
+  const sg = st.sieges?.[pid];
+  if (sg && sg.att === nid) {
+    for (const id of sg.gids) if (st.generals[id]) delete st.generals[id].besieging;
+    delete st.sieges[pid];
+  }
   transferCityTechs(st, pid, nid);
   // 首都を失った勢力は、残った領地の中で最も人口の多い都市へ遷都する
   const pn = prev ? st.nations[prev] : null;

@@ -40,30 +40,70 @@ const isCastle = (t) => t === 'castle' || t === 'keep';
 function brnd(b) { return rnd(b); }
 
 // ---- 生成 ----
-export function createBattle(st, { attNation, attIds, provinceId, fromProvince, reinforce = { att: [], def: [] } }) {
+export const WEATHER = {
+  clear: { name: '晴れ', glyph: '☀' },
+  rain: { name: '雨', glyph: '☂', desc: '弓の威力が落ち、火計が使えない' },
+  snow: { name: '雪', glyph: '❄', desc: '移動力-1。遊牧民以外は毎ターン士気が下がる' },
+  fog: { name: '霧', glyph: '≋', desc: '射程-1' },
+  heat: { name: '酷暑', glyph: '♨', desc: '攻撃側は毎ターン士気が下がる' },
+};
+
+function pickWeather(b, season, terrain) {
+  const x = brnd(b);
+  if (season === 3) return (terrain !== 'desert' && x < 0.6) ? 'snow' : x < 0.75 ? 'rain' : 'clear';
+  if (season === 1) return (terrain === 'desert' || terrain === 'steppe') && x < 0.35 ? 'heat' : x < 0.55 ? 'rain' : 'clear';
+  if (season === 0) return x < 0.3 ? 'rain' : x < 0.45 ? 'fog' : 'clear';
+  return x < 0.2 ? 'rain' : x < 0.4 ? 'fog' : 'clear';
+}
+
+// opts.field: 城を使わない野戦（出撃・後詰め）。opts.defNation / defIds で守備側を明示できる
+export function createBattle(st, { attNation, attIds, provinceId, fromProvince, reinforce = { att: [], def: [] }, defNation: defN, defIds, field = false, starving = false }) {
   const prov = st.provinces[provinceId];
   const def = PDEF[provinceId];
-  const defNation = prov.owner;
+  const defNation = defN ?? prov.owner;
   const b = {
     provinceId, fromProvince, attNation, defNation,
-    walls: prov.city.walls, hasCastle: !!defNation,
+    walls: prov.city.walls, hasCastle: !field && !!defNation,
     terrain: def.terrain,
     tiles: [], units: [], turn: 1, maxTurns: 20, side: 'att',
-    over: false, winner: null, reason: null,
+    over: false, winner: null, reason: null, notes: [],
     rng: Math.floor(rnd(st) * 4294967296) >>> 0,
   };
+  b.weather = pickWeather(b, st.season, def.terrain);
   genMap(b);
+  const nomad = (nid) => ['mongol', 'turkic'].includes(st.nations[nid]?.culture);
+  const rulerIds = new Set(Object.values(st.nations).map((n) => n.rulerId));
   const mk = (g, side) => ({
     id: g.id, gid: g.id, side, nation: g.nation, ally: g.nation !== (side === 'att' ? attNation : defNation), name: g.name, type: g.unit.type,
     soldiers: g.unit.soldiers, start: g.unit.soldiers, training: g.unit.training,
     morale: Math.min(100, 70 + Math.round(g.cha / 5) + (side === 'def' ? 5 : 0)),
-    war: g.war, lead: g.lead, c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
+    war: g.war, lead: g.lead, pol: g.pol, cha: g.cha, nomad: nomad(g.nation), ruler: rulerIds.has(g.id),
+    c: 0, r: 0, moved: false, acted: false, routed: false, dead: false, movedDist: 0,
+    tp: 1 + Math.floor(g.pol / 40), hidden: false, confused: 0, commander: false,
   });
-  const att = [...attIds, ...(reinforce.att || [])].map((id) => st.generals[id]).filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'att'));
-  const dfd = defNation ? [...generalsIn(st, provinceId, defNation), ...(reinforce.def || []).map((id) => st.generals[id])].filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'def')) : [];
+  const attGens = [...attIds, ...(reinforce.att || [])].map((id) => st.generals[id]);
+  const defGens = defIds ? defIds.map((id) => st.generals[id]) : defNation ? [...generalsIn(st, provinceId, defNation), ...(reinforce.def || []).map((id) => st.generals[id])] : [];
+  const att = attGens.filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'att'));
+  const dfd = defGens.filter((g) => g?.unit?.soldiers > 0).map((g) => mk(g, 'def'));
+  // 冬の遠征：遊牧民以外は凍傷で兵を失う
+  if (st.season === 3) {
+    let lost = 0;
+    for (const u of att) if (!u.nomad) { const l = Math.round(u.soldiers * 0.05); u.soldiers -= l; u.start = u.soldiers; lost += l; }
+    if (lost) b.notes.push(`冬の遠征で攻撃側は凍傷により${lost}の兵を失った`);
+  }
+  if (starving) { for (const u of dfd) u.morale -= 20; b.notes.push('守備側は兵糧が尽き、士気が落ちている'); }
   deploy(b, att, 'att');
   deploy(b, dfd, 'def');
   b.units = [...att, ...dfd];
+  // 総大将：君主がいれば君主、いなければ最も統率の高い武将
+  for (const side of ['att', 'def']) {
+    const us = b.units.filter((u) => u.side === side && !u.ally);
+    const pool = us.length ? us : b.units.filter((u) => u.side === side);
+    const cmd = pool.find((u) => u.ruler) ?? [...pool].sort((x, y) => y.lead - x.lead)[0];
+    if (cmd) cmd.commander = true;
+  }
+  // 伏兵：森に布陣した部隊は敵から見えない
+  for (const u of b.units) if (tileOf(b, u.c, u.r).t === 'forest') u.hidden = true;
   return b;
 }
 
@@ -154,12 +194,12 @@ function moveCost(b, u, c, r) {
   return BATTLE_TERRAIN[t].cost;
 }
 function enemyAdjacent(b, side, c, r) {
-  return hexNeighbors(c, r).some(([a, d]) => { const x = unitAt(b, a, d); return x && x.side !== side; });
+  return hexNeighbors(c, r).some(([a, d]) => { const x = unitAt(b, a, d); return x && x.side !== side && !x.hidden; });
 }
 
 // 到達可能なマス: Map<key, {c, r, cost, prev}>
 export function reachable(b, u) {
-  const mp = UNIT_TYPES[u.type].move;
+  const mp = Math.max(1, UNIT_TYPES[u.type].move - (b.weather === 'snow' ? 1 : 0));
   const res = new Map();
   res.set(hkey(u.c, u.r), { c: u.c, r: u.r, cost: 0, prev: null });
   if (u.moved) return res;
@@ -208,7 +248,12 @@ export function moveUnit(b, u, c, r) {
   const path = pathTo(reach, c, r);
   u.movedDist = path.length - 1;
   u.c = c; u.r = r; u.moved = true;
-  const ev = { type: 'move', id: u.id, path };
+  const ev = { type: 'move', id: u.id, path, revealed: [] };
+  if (u.hidden && tileOf(b, c, r).t !== 'forest') u.hidden = false;
+  for (const [a, d] of hexNeighbors(c, r)) {
+    const x = unitAt(b, a, d);
+    if (x && x.side !== u.side && x.hidden) { x.hidden = false; ev.revealed.push(x.id); }
+  }
   checkEnd(b);
   return ev;
 }
@@ -217,11 +262,12 @@ export function moveUnit(b, u, c, r) {
 export function attackRange(b, u, c = u.c, r = u.r) {
   let rg = UNIT_TYPES[u.type].range;
   if (rg > 1 && tileOf(b, c, r).t === 'hill') rg += 1;
+  if (rg > 1 && b.weather === 'fog') rg -= 1;
   return rg;
 }
 export function targetsFrom(b, u, c = u.c, r = u.r) {
   const rg = attackRange(b, u, c, r);
-  return activeUnits(b, other(u.side)).filter((t) => hexDist(c, r, t.c, t.r) <= rg);
+  return activeUnits(b, other(u.side)).filter((t) => !t.hidden && hexDist(c, r, t.c, t.r) <= rg);
 }
 
 function power(u) {
@@ -233,6 +279,7 @@ function defMul(b, u) {
   const tt = tileOf(b, u.c, u.r).t;
   let d = T.def * BATTLE_TERRAIN[tt].def * (0.8 + u.lead / 250);
   if (isCastle(tt) && u.side === 'def') d *= 1.1 + 0.3 * b.walls + (tt === 'keep' ? 0.1 : 0);
+  if (u.commander) d *= 1.1;
   return d;
 }
 
@@ -242,7 +289,8 @@ export function estimateDamage(b, a, t, from = [a.c, a.r], movedDist = a.movedDi
   let dmg = power(a) * 0.1 / defMul(b, t);
   const castleTarget = isCastle(tileOf(b, t.c, t.r).t) && t.side === 'def';
   if (!ranged && (a.type === 'cav' || a.type === 'harch') && movedDist >= 2) dmg *= 1.3;
-  if (ranged) dmg *= 0.8;
+  if (ranged) dmg *= b.weather === 'rain' ? 0.5 : 0.8;
+  if (a.hidden) dmg *= 1.5; // 伏兵の奇襲
   if (!ranged && UNIT_TYPES[a.type].range > 1) dmg *= 0.6;
   if (a.type === 'siege') dmg *= castleTarget ? 3 : 0.5;
   else if (ranged && castleTarget) dmg *= 0.6;
@@ -270,6 +318,14 @@ function rout(b, u, events) {
   for (const x of activeUnits(b, u.side)) {
     if (hexDist(x.c, x.r, u.c, u.r) <= 2) x.morale -= 8;
   }
+  if (u.commander) {
+    events.push({ type: 'collapse', side: u.side, id: u.id });
+    b.notes.push(`${u.side === 'att' ? '攻撃' : '守備'}側の総大将${u.name}が敗走し、全軍が動揺した`);
+    for (const x of activeUnits(b, u.side)) {
+      x.morale -= 25;
+      if (x.morale <= 0) rout(b, x, events);
+    }
+  }
 }
 
 export function attack(b, a, t) {
@@ -277,9 +333,11 @@ export function attack(b, a, t) {
   const dist = hexDist(a.c, a.r, t.c, t.r);
   if (dist > attackRange(b, a) || a.acted || a.routed || t.routed) return events;
   const ranged = dist > 1;
+  const ambush = a.hidden;
   const dmg = Math.round(Math.min(t.soldiers, estimateDamage(b, a, t) * (0.85 + brnd(b) * 0.3)));
   let counter = 0;
   const tBefore = t.soldiers;
+  if (ambush) { a.hidden = false; t.morale -= 15; events.push({ type: 'ambush', id: a.id }); }
   applyLoss(b, t, dmg, events);
   if (!ranged && !t.routed) {
     const saved = t.soldiers;
@@ -317,7 +375,76 @@ export function endPhase(b) {
   for (const u of activeUnits(b, b.side)) {
     u.moved = false; u.acted = false; u.movedDist = 0;
     u.morale = Math.min(100, u.morale + 3);
+    if (b.weather === 'snow' && !u.nomad) u.morale -= 2;
+    if (b.weather === 'heat' && u.side === 'att') u.morale -= 2;
+    if (u.confused > 0) { u.confused -= 1; u.moved = true; u.acted = true; }
   }
+}
+
+// ---- 計略 ----
+export const TACTICS = {
+  fire: { name: '火計', range: 2, desc: '炎で敵を焼く。森や城にいる敵に大きな効果。雨・雪では使えない' },
+  confuse: { name: '偽報', range: 3, desc: '偽の知らせで敵を混乱させ、次の手番を封じる' },
+  rally: { name: '鼓舞', range: 0, desc: '自分と隣接する味方の士気を高める' },
+};
+
+export function tacticChance(b, u, id, t) {
+  if (id === 'rally') return 1;
+  const tp = t?.pol ?? 50;
+  let p = id === 'fire' ? 0.35 + (u.pol - tp) / 120 : 0.3 + (u.pol - tp) / 100;
+  if (id === 'fire' && t) {
+    const tt = tileOf(b, t.c, t.r).t;
+    if (tt === 'forest') p += 0.15;
+    if (tt === 'river') p -= 0.3;
+  }
+  return Math.max(0.1, Math.min(0.9, p));
+}
+
+export function tacticOptions(b, u) {
+  if (u.acted || u.routed || u.tp <= 0) return [];
+  const out = [];
+  const enemies = activeUnits(b, other(u.side)).filter((t) => !t.hidden);
+  const near = (rg) => enemies.filter((t) => hexDist(u.c, u.r, t.c, t.r) <= rg);
+  if (b.weather !== 'rain' && b.weather !== 'snow') {
+    const ts = near(TACTICS.fire.range);
+    if (ts.length) out.push({ id: 'fire', targets: ts });
+  }
+  const cs = near(TACTICS.confuse.range).filter((t) => !t.confused);
+  if (cs.length) out.push({ id: 'confuse', targets: cs });
+  out.push({ id: 'rally', targets: [] });
+  return out;
+}
+
+export function useTactic(b, u, id, t) {
+  const events = [];
+  if (u.acted || u.tp <= 0) return events;
+  u.tp -= 1;
+  u.acted = true; u.moved = true;
+  if (u.hidden) u.hidden = false;
+  if (id === 'rally') {
+    const boost = 12 + Math.round(u.cha / 10);
+    const who = [u, ...activeUnits(b, u.side).filter((x) => x !== u && hexDist(x.c, x.r, u.c, u.r) === 1)];
+    for (const x of who) x.morale = Math.min(100, x.morale + boost);
+    events.push({ type: 'tactic', id: u.id, tactic: id, ok: true, targets: who.map((x) => x.id) });
+    return events;
+  }
+  const ok = brnd(b) < tacticChance(b, u, id, t);
+  const ev = { type: 'tactic', id: u.id, tactic: id, ok, target: t.id };
+  events.push(ev);
+  if (!ok) return events;
+  if (id === 'fire') {
+    const tt = tileOf(b, t.c, t.r).t;
+    let dmg = t.soldiers * (0.1 + u.pol / 900) * (tt === 'forest' ? 1.5 : isCastle(tt) ? 1.2 : 1);
+    dmg = Math.round(Math.min(t.soldiers, dmg * (0.85 + brnd(b) * 0.3)));
+    ev.dmg = dmg;
+    t.morale -= 12;
+    applyLoss(b, t, dmg, events);
+  } else if (id === 'confuse') {
+    t.confused = 1;
+    t.morale -= 10;
+  }
+  checkEnd(b);
+  return events;
 }
 
 export function retreat(b, side) {
@@ -339,7 +466,11 @@ export function aiStep(b) {
 
 function aiAct(b, u) {
   const events = [];
-  const enemies = activeUnits(b, other(u.side));
+  const enemies = activeUnits(b, other(u.side)).filter((t) => !t.hidden);
+  if (!activeUnits(b, other(u.side)).length) { wait(b, u); return events; }
+  // 計略：条件が良ければ攻撃の代わりに使う
+  const tac = aiTactic(b, u);
+  if (tac) return useTactic(b, u, tac.id, tac.target);
   if (!enemies.length) { wait(b, u); return events; }
   const reach = reachable(b, u);
   const start = hkey(u.c, u.r);
@@ -375,8 +506,8 @@ function aiAct(b, u) {
     wait(b, u);
     return events;
   }
-  // 攻撃できない：前進（城に籠る守備側は待機）
-  if (holdCastle || onKeep) { wait(b, u); return events; }
+  // 攻撃できない：前進（城に籠る守備側・潜む伏兵は待機）
+  if (holdCastle || onKeep || u.hidden) { wait(b, u); return events; }
   let goal;
   if (u.side === 'att' && b.hasCastle) goal = b.keep;
   else {
@@ -400,6 +531,31 @@ function aiAct(b, u) {
   return events;
 }
 
+function aiTactic(b, u) {
+  const opts = tacticOptions(b, u);
+  if (!opts.length || u.hidden) return null;
+  const normalBest = Math.max(0, ...targetsFrom(b, u).map((t) => estimateDamage(b, u, t)));
+  for (const o of opts) {
+    if (o.id === 'fire') {
+      for (const t of o.targets) {
+        const p = tacticChance(b, u, 'fire', t);
+        const tt = tileOf(b, t.c, t.r).t;
+        const exp = p * t.soldiers * (0.1 + u.pol / 900) * (tt === 'forest' ? 1.5 : isCastle(tt) ? 1.2 : 1);
+        if (p >= 0.5 && exp > normalBest * 1.1) return { id: 'fire', target: t };
+      }
+    }
+    if (o.id === 'confuse' && u.pol >= 70 && brnd(b) < 0.3) {
+      const t = [...o.targets].sort((x, y) => y.soldiers - x.soldiers)[0];
+      if (tacticChance(b, u, 'confuse', t) >= 0.55 && normalBest < t.soldiers * 0.05) return { id: 'confuse', target: t };
+    }
+    if (o.id === 'rally') {
+      const low = activeUnits(b, u.side).filter((x) => hexDist(x.c, x.r, u.c, u.r) <= 1 && x.morale < 45).length;
+      if (low >= 2 || (u.morale < 35 && normalBest === 0)) return { id: 'rally', target: null };
+    }
+  }
+  return null;
+}
+
 export function aiPhase(b) {
   let guard = 0;
   while (!b.over && guard++ < 50) {
@@ -421,7 +577,7 @@ export function autoResolve(b) {
 export function battleResult(b) {
   return {
     winner: b.winner, reason: b.reason, turns: b.turn,
-    provinceId: b.provinceId, fromProvince: b.fromProvince, attNation: b.attNation, defNation: b.defNation,
+    provinceId: b.provinceId, fromProvince: b.fromProvince, attNation: b.attNation, defNation: b.defNation, weather: b.weather, notes: b.notes,
     units: b.units.map((u) => ({ gid: u.gid, side: u.side, soldiers: u.soldiers, start: u.start, routed: u.routed, dead: u.dead })),
   };
 }
